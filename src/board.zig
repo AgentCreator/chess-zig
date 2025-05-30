@@ -1,6 +1,8 @@
 const assert = @import("std").debug.assert;
 const testing = @import("std").testing;
 
+const Self = @This();
+
 const std = @import("std");
 
 const Piece = enum {
@@ -122,6 +124,10 @@ const Move = packed struct(u12) {
         };
 
     }
+
+    fn toInt(self: Move) u12 {
+        return @bitCast(self);
+    }
 };
 test "move from notation" {
     // Regular moves with different separators
@@ -171,5 +177,82 @@ test "move from notation" {
 
 // BOARD
 
-board: [64]Piece,
-moveHistory: [9e3]Move,
+board: [64]Piece = undefined,
+moveHistory: [9e3]?Move = @splat(null),
+// 4096 = 2^12
+// intented usage: legalMoves[move.toInt()]
+legalMoves: [4096]bool = undefined,
+
+
+
+fn fromFen(comptime fen: []const u8) Self {
+    var board: Self = Self{};
+
+    comptime var i: usize = 0;
+    
+    inline for (fen) |chr| {
+        const piece: Piece = switch (chr) {
+                'r' => .Brook,
+                'n' => .Bknight,
+                'b' => .Bbishop,
+                'q' => .Bqueen,
+                'k' => .Bking,
+                'p' => .Bpawn,
+                'R' => .Wrook,
+                'N' => .Wknight,
+                'B' => .Wbishop,
+                'Q' => .Wqueen,
+                'K' => .Wking,
+                'P' => .Wpawn,
+                '1'...'8' => |n| {
+                    i += comptime std.fmt.parseInt(u6, &[1]u8{n}, 10) catch unreachable;
+                    continue;
+                },
+                '/' => continue,
+                else => unreachable,
+            };
+            board.board[i] = piece;
+            i +%= 1;
+    }
+    return board;
+}
+
+test "fromFen" {
+    const startingPosition = fromFen("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR");
+    try testing.expectEqual(Piece.Brook, startingPosition.board[0]);
+    try testing.expectEqual(Piece.Bknight, startingPosition.board[1]);
+    try testing.expectEqual(Piece.Wking, startingPosition.board[60]);
+    try testing.expectEqual(Piece.Wrook, startingPosition.board[63]);
+
+    const emptyBoard = fromFen("8/8/8/8/8/8/8/8");
+    try testing.expectEqual(Piece.empty, emptyBoard.board[0]);
+    try testing.expectEqual(Piece.empty, emptyBoard.board[63]);
+}
+
+fn forceMakeMove (self: *Self, move: Move) void {
+    const piece = self.*.board[move.from];
+    self.board[move.from] = .empty;
+    self.board[move.to] = piece;
+}
+
+test "force make move test" {
+    var board = fromFen("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR");
+
+    // Test basic pawn move
+    board.forceMakeMove(Move{ .from = try squereToInt("e2"), .to = try squereToInt("e4") });
+    try testing.expectEqual(Piece.empty, board.board[try squereToInt("e2")]);
+    try testing.expectEqual(Piece.Wpawn, board.board[try squereToInt("e4")]);
+
+    // Test piece capture
+    board = fromFen("rnbqkbnr/ppp1pppp/8/3p4/4P3/8/PPPP1PPP/RNBQKBNR");
+    board.forceMakeMove(Move{ .from = try squereToInt("e4"), .to = try squereToInt("d5") });
+    try testing.expectEqual(Piece.empty, board.board[try squereToInt("e4")]);
+    try testing.expectEqual(Piece.Wpawn, board.board[try squereToInt("d5")]);
+
+    // Test knight move
+    board = fromFen("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR");
+    board.forceMakeMove(Move{ .from = try squereToInt("g1"), .to = try squereToInt("f3") });
+    try testing.expectEqual(Piece.empty, board.board[try squereToInt("g1")]);
+    try testing.expectEqual(Piece.Wknight, board.board[try squereToInt("f3")]);
+}
+
