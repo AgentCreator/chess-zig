@@ -87,12 +87,11 @@ test "squereToInt" {
     try testing.expectError(error.WrongLength, squereToInt("fun fact: unit tests are annoying"));
 }
 
-const Move = packed struct(u12) {
+pub const Move = packed struct(u12) {
     from: u6,
     to: u6,
 
-
-    pub fn fromNotation(notation: []const u8, color: Piece.Color) error{NotAParsableMove, NoNeedleFound, WrongLength}!Move {
+    pub fn fromNotation(notation: []const u8, color: Piece.Color) error{ NotAParsableMove, NoNeedleFound, WrongLength }!Move {
         var splitNotation = std.mem.splitAny(u8, notation, " -xX");
         const from, const to = .{ splitNotation.first(), splitNotation.rest() };
         if (from.len == 1 and from[0] == 'O') {
@@ -118,11 +117,7 @@ const Move = packed struct(u12) {
             return error.NotAParsableMove;
         }
 
-        return Move{
-            .from = try squereToInt(from),
-            .to = try squereToInt(to)
-        };
-
+        return Move{ .from = try squereToInt(from), .to = try squereToInt(to) };
     }
 
     fn toInt(self: Move) u12 {
@@ -183,38 +178,58 @@ moveHistory: [9e3]?Move = @splat(null),
 // intented usage: legalMoves[move.toInt()]
 legalMoves: [4096]bool = undefined,
 
-
-
-fn fromFen(comptime fen: []const u8) Self {
+pub fn fromFen(comptime fen: []const u8) Self {
     var board: Self = Self{};
 
     comptime var i: usize = 0;
-    
+
     inline for (fen) |chr| {
         const piece: Piece = switch (chr) {
-                'r' => .Brook,
-                'n' => .Bknight,
-                'b' => .Bbishop,
-                'q' => .Bqueen,
-                'k' => .Bking,
-                'p' => .Bpawn,
-                'R' => .Wrook,
-                'N' => .Wknight,
-                'B' => .Wbishop,
-                'Q' => .Wqueen,
-                'K' => .Wking,
-                'P' => .Wpawn,
-                '1'...'8' => |n| {
-                    i += comptime std.fmt.parseInt(u6, &[1]u8{n}, 10) catch unreachable;
-                    continue;
-                },
-                '/' => continue,
-                else => unreachable,
-            };
-            board.board[i] = piece;
-            i +%= 1;
+            'r' => .Brook,
+            'n' => .Bknight,
+            'b' => .Bbishop,
+            'q' => .Bqueen,
+            'k' => .Bking,
+            'p' => .Bpawn,
+            'R' => .Wrook,
+            'N' => .Wknight,
+            'B' => .Wbishop,
+            'Q' => .Wqueen,
+            'K' => .Wking,
+            'P' => .Wpawn,
+            '1'...'8' => |n| {
+                i += comptime std.fmt.parseInt(u6, &[1]u8{n}, 10) catch unreachable;
+                continue;
+            },
+            '/' => continue,
+            else => unreachable,
+        };
+        board.board[i] = piece;
+        i +%= 1;
     }
     return board;
+}
+
+pub fn prettyPrint(self: Self) void {
+    for (self.board, 0..) |pieceType, i| {
+        const piece: u21 = switch (pieceType) {
+            .empty => '.',
+            .Wpawn => '♙',
+            .Bpawn => '♟',
+            .Wknight => '♘',
+            .Bknight => '♞',
+            .Wbishop => '♗',
+            .Bbishop => '♝',
+            .Wrook => '♖',
+            .Brook => '♜',
+            .Wqueen => '♕',
+            .Bqueen => '♛',
+            .Wking => '♔',
+            .Bking => '♚',
+        };
+        const chr: u8 = if ((i + 1) % 8 == 0) '\n' else ' ';
+        std.debug.print("{u}{c}", .{ piece, chr });
+    }
 }
 
 test "fromFen" {
@@ -229,7 +244,7 @@ test "fromFen" {
     try testing.expectEqual(Piece.empty, emptyBoard.board[63]);
 }
 
-fn forceMakeMove (self: *Self, move: Move) void {
+fn forceMakeMove(self: *Self, move: Move) void {
     const piece = self.*.board[move.from];
     self.board[move.from] = .empty;
     self.board[move.to] = piece;
@@ -255,4 +270,3 @@ test "force make move test" {
     try testing.expectEqual(Piece.empty, board.board[try squereToInt("g1")]);
     try testing.expectEqual(Piece.Wknight, board.board[try squereToInt("f3")]);
 }
-
