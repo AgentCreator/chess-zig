@@ -24,9 +24,17 @@ const Piece = enum {
         White,
         Black,
     };
+
+    fn color(self: Piece) ?Color {
+        if (self == .empty) return null;
+        return switch (self) {
+            .Wking, .Wqueen, .Wrook, .Wbishop, .Wknight, .Wpawn => .White,
+            else => .Black,
+        };
+    }
 };
 
-fn intCast(comptime T: type, int: anytype) T {
+inline fn intCast(comptime T: type, int: anytype) T {
     return @as(T, @intCast(int));
 }
 
@@ -269,4 +277,91 @@ test "force make move test" {
     board.forceMakeMove(Move{ .from = try squereToInt("g1"), .to = try squereToInt("f3") });
     try testing.expectEqual(Piece.empty, board.board[try squereToInt("g1")]);
     try testing.expectEqual(Piece.Wknight, board.board[try squereToInt("f3")]);
+}
+
+fn addLegalMove(self: *Self, move: Move) void {
+    self.legalMoves[move.toInt()] = true;
+}
+
+fn getXYfromPos(pos: u6) [2]i8 {
+    return .{ @mod(pos, 8), @divFloor(pos, 8) };
+}
+
+test "getXYfromPos" {
+    try testing.expectEqual([2]i8{ 0, 0 }, getXYfromPos(0)); // a8
+    try testing.expectEqual([2]i8{ 7, 0 }, getXYfromPos(7)); // h8
+    try testing.expectEqual([2]i8{ 0, 7 }, getXYfromPos(56)); // a1
+    try testing.expectEqual([2]i8{ 7, 7 }, getXYfromPos(63)); // h1
+    try testing.expectEqual([2]i8{ 4, 3 }, getXYfromPos(28)); // e5
+    try testing.expectEqual([2]i8{ 2, 5 }, getXYfromPos(42)); // c3
+}
+
+fn isOnBoard(x: i8, y: i8) bool {
+    return x >= 0 and x < 8 and y >= 0 and y < 8;
+}
+
+fn addDirections(self: *Self, start: u6, comptime directions: []const [2]i8) void {
+    const color = self.board[start].color().?;
+    for (directions) |direction| {
+        std.debug.print("direction: {any}\n", .{direction});
+        var x, var y = getXYfromPos(start);
+        var newPos: i8 = start;
+        // running the iteration extra time cuz there is no do while loops
+        while (true) {
+            x += direction[0];
+            y += direction[1];
+            newPos = y * 8 + x;
+            if (!isOnBoard(x, y) or self.board[intCast(usize, newPos)].color() == color) break;
+
+            std.debug.print("x: {d}, y: {d}\n", .{ x, y });
+            self.addLegalMove(Move{ .from = start, .to = intCast(u6, newPos) });
+        }
+    }
+}
+
+fn getLegalMoves(self: *Self, side: Piece.Color) void {
+    for (self.board, 0..) |piece, i| {
+        if (piece.color() != side) continue;
+        const pos = intCast(u6, i);
+        switch (piece) {
+            .Wrook, .Brook => self.addDirections(pos, &.{
+                .{ 1, 0 },
+                .{ 0, 1 },
+                .{ -1, 0 },
+                .{ 0, -1 },
+            }),
+            .Wbishop, .Bbishop => self.addDirections(pos, &.{
+                .{ 1, 1 },
+                .{ -1, 1 },
+                .{ -1, -1 },
+                .{ 1, -1 },
+            }),
+            .Wqueen, .Bqueen => self.addDirections(pos, &.{
+                .{ 1, 0 },
+                .{ 0, 1 },
+                .{ -1, 0 },
+                .{ 0, -1 },
+                .{ 1, 1 },
+                .{ -1, 1 },
+                .{ -1, -1 },
+                .{ 1, -1 },
+            }),
+            .Wknight, .Bknight => {
+                const x, const y = getXYfromPos(pos);
+                for ([_][2]i8{ .{ 2, 1 }, .{ 2, -1 }, .{ -2, 1 }, .{ -2, -1 }, .{ 1, 2 }, .{ 1, -2 }, .{ -1, 2 }, .{ -1, -2 } }) |value| {
+                    if (isOnBoard(x + value[0], y + value[1]) and self.board[intCast(usize, (y + value[1]) * 8 + x)].color() != side) self.addLegalMove(Move{ .from = pos, .to = intCast(u6, (y + value[1]) * 8 + x) });
+                }
+            },
+            else => {},
+        }
+    }
+}
+
+test "getLegalMoves" {
+    var board = fromFen("8/8/8/8/4N3/8/8/8");
+
+    board.getLegalMoves(.White);
+    for ([_]u12{ 2852, 1828, 2852, 1828, 3364, 1316, 3364, 1316 }) |value| {
+        try testing.expect(board.legalMoves[value]);
+    }
 }

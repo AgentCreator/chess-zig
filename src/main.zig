@@ -5,8 +5,7 @@
 const Board = @import("board.zig");
 
 pub fn main() !void {
-     var board = Board.fromFen("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR");
-
+    var board = Board.fromFen("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR");
 
     // Prints to stderr (it's a shortcut based on `std.io.getStdErr()`)
 
@@ -14,7 +13,6 @@ pub fn main() !void {
     // are implementing gzip, then only the compressed bytes should be sent to
     // stdout, not any debugging messages.
     board.prettyPrint();
-
 }
 
 test "simple test" {
