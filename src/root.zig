@@ -2,12 +2,24 @@
 //! you are making an executable, the convention is to delete this file and
 //! start with main.zig instead.
 const std = @import("std");
-const testing = std.testing;
+// const testing = std.testing;
 
-pub export fn add(a: i32, b: i32) i32 {
-    return a + b;
-}
-
-test "basic add functionality" {
-    try testing.expect(add(3, 7) == 10);
-}
+// const Type = std.builtin.Type;
+//
+// pub fn structCurry(comptime T: type, comptime defaults: anytype) type {
+//     const old_info = @typeInfo(T).@"struct";
+//     var new_fields: [old_info.fields.len]Type.StructField = old_info.fields[0..].*;
+//     for (&new_fields) |*f| {
+//         if (@hasField(@TypeOf(defaults), f.name)) {
+//             const default_val: f.type = @field(defaults, f.name);
+//             f.default_value_ptr = @ptrCast(&default_val);
+//         }
+//     }
+//     return @Type(.{ .@"struct" = .{
+//         .backing_integer = old_info.backing_integer,
+//         .decls = &.{},
+//         .fields = &new_fields,
+//         .is_tuple = old_info.is_tuple,
+//         .layout = old_info.layout,
+//     } });
+// }
