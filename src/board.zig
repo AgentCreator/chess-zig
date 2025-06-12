@@ -1,9 +1,8 @@
 const assert = @import("std").debug.assert;
+const std = @import("std");
 const testing = @import("std").testing;
 
 const Self = @This();
-
-const std = @import("std");
 
 const Piece = enum {
     empty,
@@ -128,7 +127,7 @@ pub const Move = packed struct(u12) {
         return Move{ .from = try squereToInt(from), .to = try squereToInt(to) };
     }
 
-    fn toInt(self: Move) u12 {
+    inline fn toInt(self: Move) u12 {
         return @bitCast(self);
     }
 };
@@ -296,14 +295,14 @@ test "getXYfromPos" {
     try testing.expectEqual([2]i8{ 2, 5 }, getXYfromPos(42)); // c3
 }
 
-fn isOnBoard(x: i8, y: i8) bool {
+inline fn isOnBoard(x: i8, y: i8) bool {
     return x >= 0 and x < 8 and y >= 0 and y < 8;
 }
 
 fn addDirections(self: *Self, start: u6, comptime directions: []const [2]i8) void {
     const color = self.board[start].color().?;
     for (directions) |direction| {
-        std.debug.print("direction: {any}\n", .{direction});
+        // std.debug.print("direction: {any}\n", .{direction});
         var x, var y = getXYfromPos(start);
         var newPos: i8 = start;
         // running the iteration extra time cuz there is no do while loops
@@ -313,10 +312,15 @@ fn addDirections(self: *Self, start: u6, comptime directions: []const [2]i8) voi
             newPos = y * 8 + x;
             if (!isOnBoard(x, y) or self.board[intCast(usize, newPos)].color() == color) break;
 
-            std.debug.print("x: {d}, y: {d}\n", .{ x, y });
+            // std.debug.print("x: {d}, y: {d}\n", .{ x, y });
             self.addLegalMove(Move{ .from = start, .to = intCast(u6, newPos) });
         }
     }
+}
+
+inline fn checkColor(self: Self, squere: anytype) error{SquereOutsideBoard}!?Piece.Color {
+    if (squere < 0 or squere > 63) return error.SquereOutsideBoard;
+    return self.board[intCast(u6, squere)].color();
 }
 
 fn getLegalMoves(self: *Self, side: Piece.Color) void {
@@ -352,9 +356,86 @@ fn getLegalMoves(self: *Self, side: Piece.Color) void {
                     if (isOnBoard(x + value[0], y + value[1]) and self.board[intCast(usize, (y + value[1]) * 8 + x)].color() != side) self.addLegalMove(Move{ .from = pos, .to = intCast(u6, (y + value[1]) * 8 + x) });
                 }
             },
+            .Wpawn, .Bpawn => {
+                const direction: i6 = if (side == .Black) 1 else -1;
+                // classic movement
+                var sq: i8 = intCast(i8, pos) + (direction * 8);
+                if (self.checkColor(sq) catch unreachable == null) {
+                    const new_move1 = Move{.from = pos, .to = intCast(u6, sq)};
+                    // std.debug.print("new pawn move: {any}, moving a {any} onto a {?}.\n", .{new_move1, side, self.checkColor(sq + (direction * 8)) catch unreachable});
+                    self.addLegalMove(new_move1);
+                    sq += (direction * 8);
+                    // double movement
+                    if (self.checkColor(sq) catch unreachable == null and switch (side) {.White => pos >= 48 and pos < 56, .Black => pos >= 8 and pos < 16} ) {
+                        std.debug.print("pos:{d}\n", .{pos});
+                        const new_move2 = Move{.from = pos, .to = intCast(u6, sq)};
+                        self.addLegalMove(new_move2);
+                    }
+                }
+            },
             else => {},
         }
     }
+}
+
+test "legal moves pawn tests classic moves" {
+    var board = fromFen("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR");
+    board.getLegalMoves(.White);
+    board.getLegalMoves(.Black);
+    // white
+    for (48..56) |i| {
+        const move = Move{.from = intCast(u6, i), .to = intCast(u6, i - 8)};
+        try testing.expect(board.legalMoves[move.toInt()]);
+    }
+    // black
+    for (8..16) |i| {
+        const move = Move{.from = intCast(u6, i), .to = intCast(u6, i + 8)};
+        try testing.expect(board.legalMoves[move.toInt()]);
+    }
+    var falsy_board = fromFen("rnbqkbnr/8/8/8/8/pppppppp/PPPPPPPP/RNBQKBNR");
+    falsy_board.getLegalMoves(.Black);
+    falsy_board.getLegalMoves(.White);
+    // white
+    for (48..56) |i| {
+        const move = Move{.from = intCast(u6, i), .to = intCast(u6, i - 8)};
+        try testing.expect(!falsy_board.legalMoves[move.toInt()]);
+    }
+    // black
+    for (40..48) |i| {
+        const move = Move{.from = intCast(u6, i), .to = intCast(u6, i + 8)};
+        try testing.expect(!falsy_board.legalMoves[move.toInt()]);
+    }
+}
+test "legal moves pawn tests double moves" {
+    var board = fromFen("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR");
+    board.getLegalMoves(.White);
+    board.getLegalMoves(.Black);
+    // white double moves from starting position
+    for (48..56) |i| {
+        const move = Move{.from = intCast(u6, i), .to = intCast(u6, i - 16)};
+        try testing.expect(board.legalMoves[move.toInt()]);
+    }
+    // black double moves from starting position 
+    for (8..16) |i| {
+        const move = Move{.from = intCast(u6, i), .to = intCast(u6, i + 16)};
+        try testing.expect(board.legalMoves[move.toInt()]);
+    }
+    board = fromFen("8/8/p7/P7/8/8/8/8");
+    board.getLegalMoves(.White);
+    board.getLegalMoves(.Black);
+    const no_white_double = Move{.from = intCast(u6, 32), .to = intCast(u6, 16)};
+    try testing.expect(!board.legalMoves[no_white_double.toInt()]);
+    const no_black_double = Move{.from = intCast(u6, 40), .to = intCast(u6, 56)};
+    try testing.expect(!board.legalMoves[no_black_double.toInt()]);
+    board = fromFen("rnbqkbnr/pppppppp/8/8/P7/8/1PPPPPPP/RNBQKBNR");
+    board.getLegalMoves(.White);
+    const blocked_white = Move{.from = intCast(u6, 48), .to = intCast(u6, 32)};
+    try testing.expect(!board.legalMoves[blocked_white.toInt()]);
+
+    board = fromFen("rnbqkbnr/1ppppppp/8/p7/8/8/PPPPPPPP/RNBQKBNR");
+    board.getLegalMoves(.Black);
+    const blocked_black = Move{.from = intCast(u6, 9), .to = intCast(u6, 25)};
+    try testing.expect(board.legalMoves[blocked_black.toInt()]);
 }
 
 test "getLegalMoves" {
