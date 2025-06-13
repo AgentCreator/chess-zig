@@ -1,4 +1,3 @@
-const assert = @import("std").debug.assert;
 const std = @import("std");
 const testing = @import("std").testing;
 
@@ -327,17 +326,14 @@ inline fn isOnBoard(x: i8, y: i8) bool {
 fn addDirections(self: *Self, start: u6, comptime directions: []const [2]i8) void {
     const color = self.board[start].color().?;
     for (directions) |direction| {
-        // std.debug.print("direction: {any}\n", .{direction});
         var x, var y = getXYfromPos(start);
         var newPos: i8 = start;
-        // running the iteration extra time cuz there is no do while loops
         while (true) {
             x += direction[0];
             y += direction[1];
             newPos = y * 8 + x;
             if (!isOnBoard(x, y) or self.board[intCast(usize, newPos)].color() == color) break;
 
-            // std.debug.print("x: {d}, y: {d}\n", .{ x, y });
             self.addLegalMove(Move{ .from = start, .to = intCast(u6, newPos) });
         }
     }
@@ -351,6 +347,84 @@ fn firstFreeMove(self: Self) usize {
     return blk: for (self.moveHistory, 0..) |value, i| {
         if (value == null) break :blk i;
     } else unreachable;
+}
+
+fn hasPieceMoved(self: Self, piece_pos: u6) bool {
+    return for (self.moveHistory) |move| {
+        if (move == null) break false;
+        if (move.?.to == piece_pos) break true;
+    } else unreachable;
+}
+
+test "hasPieceMoved basic tests" {
+    var board = fromFen("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR");
+
+    // Test initial position - no moves
+    try testing.expect(!board.hasPieceMoved(try squereToInt("e2")));
+    try testing.expect(!board.hasPieceMoved(try squereToInt("e7")));
+
+    // Test after making moves
+    board.forceMakeMove(Move{ .from = try squereToInt("e2"), .to = try squereToInt("e4") });
+    try testing.expect(board.hasPieceMoved(try squereToInt("e4")));
+    try testing.expect(!board.hasPieceMoved(try squereToInt("e2")));
+
+    board.forceMakeMove(Move{ .from = try squereToInt("e7"), .to = try squereToInt("e5") });
+    try testing.expect(board.hasPieceMoved(try squereToInt("e5")));
+    try testing.expect(!board.hasPieceMoved(try squereToInt("e7")));
+
+    // Test piece capture
+    board.forceMakeMove(Move{ .from = try squereToInt("e4"), .to = try squereToInt("e5") });
+    try testing.expect(board.hasPieceMoved(try squereToInt("e5")));
+}
+
+test "hasPieceMoved castling tests" {
+    var board = fromFen("r3k2r/pppppppp/8/8/8/8/PPPPPPPP/R3K2R");
+
+    // Test initial rook and king positions
+    try testing.expect(!board.hasPieceMoved(try squereToInt("e1")));
+    try testing.expect(!board.hasPieceMoved(try squereToInt("a1")));
+    try testing.expect(!board.hasPieceMoved(try squereToInt("h1")));
+    try testing.expect(!board.hasPieceMoved(try squereToInt("e8")));
+    try testing.expect(!board.hasPieceMoved(try squereToInt("a8")));
+    try testing.expect(!board.hasPieceMoved(try squereToInt("h8")));
+
+    // Test after castling
+    board.forceMakeMove(Move{ .from = try squereToInt("e1"), .to = try squereToInt("g1") });
+    try testing.expect(board.hasPieceMoved(try squereToInt("g1")));
+    try testing.expect(!board.hasPieceMoved(try squereToInt("e1")));
+}
+
+test "hasPieceMoved pawn tests" {
+    var board = fromFen("8/pppppppp/8/8/8/8/PPPPPPPP/8");
+
+    // Test initial pawn positions
+    try testing.expect(!board.hasPieceMoved(try squereToInt("e2")));
+    try testing.expect(!board.hasPieceMoved(try squereToInt("e7")));
+
+    // Test after single move
+    board.forceMakeMove(Move{ .from = try squereToInt("e2"), .to = try squereToInt("e3") });
+    try testing.expect(board.hasPieceMoved(try squereToInt("e3")));
+    try testing.expect(!board.hasPieceMoved(try squereToInt("e2")));
+
+    // Test after double move
+    board.forceMakeMove(Move{ .from = try squereToInt("e7"), .to = try squereToInt("e5") });
+    try testing.expect(board.hasPieceMoved(try squereToInt("e5")));
+    try testing.expect(!board.hasPieceMoved(try squereToInt("e7")));
+}
+
+test "hasPieceMoved untouched pieces" {
+    var board = fromFen("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR");
+
+    // Make some moves
+    board.forceMakeMove(Move{ .from = try squereToInt("e2"), .to = try squereToInt("e4") });
+    board.forceMakeMove(Move{ .from = try squereToInt("e7"), .to = try squereToInt("e5") });
+    board.forceMakeMove(Move{ .from = try squereToInt("g1"), .to = try squereToInt("f3") });
+
+    // Test untouched pieces
+    try testing.expect(!board.hasPieceMoved(try squereToInt("d2")));
+    try testing.expect(!board.hasPieceMoved(try squereToInt("d7")));
+    try testing.expect(!board.hasPieceMoved(try squereToInt("a1")));
+    try testing.expect(!board.hasPieceMoved(try squereToInt("h8")));
 }
 
 fn getLegalMoves(self: *Self, side: Piece.Color) void {
@@ -392,7 +466,7 @@ fn getLegalMoves(self: *Self, side: Piece.Color) void {
                     .{ -1, 2 },
                     .{ -1, -2 },
                 }) |value| {
-                    if (isOnBoard(x + value[0], y + value[1]) and self.checkColor((y + value[1]) * 8 + x) catch unreachable != side) self.addLegalMove(Move{ .from = pos, .to = intCast(u6, (y + value[1]) * 8 + x) });
+                    if (isOnBoard(x + value[0], y + value[1]) and self.checkColor((y + value[1]) * 8 + x) catch unreachable != side) self.addLegalMove(Move{ .from = pos, .to = intCast(u6, (y + value[1]) * 8 + (x + value[0])) });
                 }
             },
             .Wpawn, .Bpawn => {
@@ -401,7 +475,6 @@ fn getLegalMoves(self: *Self, side: Piece.Color) void {
                 var sq: i8 = intCast(i8, pos) + direction * 8;
                 if (self.checkColor(sq) catch unreachable == null) {
                     const new_move1 = Move{ .from = pos, .to = intCast(u6, sq) };
-                    // std.debug.print("new pawn move: {any}, moving a {any} onto a {?}.\n", .{new_move1, side, self.checkColor(sq + (direction * 8)) catch unreachable});
                     self.addLegalMove(new_move1);
                     sq += direction * 8;
                     // double movement
@@ -418,72 +491,134 @@ fn getLegalMoves(self: *Self, side: Piece.Color) void {
                 const opposite_side: Piece.Color = if (side == .White) .Black else .White;
                 if (pos % 8 != 0 and self.checkColor(intCast(i7, pos) + direction * 8 - 1) catch unreachable == opposite_side) {
                     const move = Move{ .from = pos, .to = intCast(u6, intCast(i7, pos) + direction * 8 - 1) };
-                    // std.debug.print("capture allowed! {any}\n ", .{move});
                     self.addLegalMove(move);
                 }
                 if (pos % 8 != 7 and self.checkColor(intCast(i7, pos) + direction * 8 + 1) catch unreachable == opposite_side) {
                     const move = Move{ .from = pos, .to = intCast(u6, intCast(i7, pos) + direction * 8 + 1) };
-                    // std.debug.print("capture allowed! {any}\n ", .{move});
                     self.addLegalMove(move);
                 }
-
-                // TODO: make enpassant
-                const opposite_piece: Piece = switch (opposite_side) {
-                    .White => .Wpawn,
-                    .Black => .Bpawn,
-                };
+                const opposite_piece: Piece = if (opposite_side == .Black) .Bpawn else .Wpawn;
                 if (self.firstFreeMove() == 0) continue;
-                const last_move: Move = self.moveHistory[self.firstFreeMove()-1].?;
+                const last_move: Move = self.moveHistory[self.firstFreeMove() - 1].?;
                 const did_double_move: bool = intCast(i7, last_move.from) - intCast(i7, last_move.to) == direction * 16;
                 if (pos % 8 != 0 and self.board[pos - 1] == opposite_piece and last_move.to == pos - 1 and did_double_move) {
                     const move = Move{ .from = pos, .to = intCast(u6, intCast(i7, pos) + direction * 8 - 1) };
-                    // std.debug.print("en passant allowed! {any}\n ", .{move});
                     self.addLegalMove(move);
                 }
                 if (pos % 8 != 7 and self.board[pos + 1] == opposite_piece and last_move.to == pos + 1 and did_double_move) {
                     const move = Move{ .from = pos, .to = intCast(u6, intCast(i7, pos) + direction * 8 + 1) };
-                    // std.debug.print("en passant allowed! {any}\n ", .{move});
                     self.addLegalMove(move);
                 }
             },
-            else => {},
+            .Bking, .Wking => {
+                const x, const y = getXYfromPos(pos);
+                for ([_][2]i8{
+                    .{ 1, 0 },
+                    .{ 0, 1 },
+                    .{ -1, 0 },
+                    .{ 0, -1 },
+                    .{ -1, -1 },
+                    .{ 1, 1 },
+                    .{ 1, -1 },
+                    .{ -1, 1 },
+                }) |value| {
+                    const new_pos = (y + value[1]) * 8 + (x + value[0]);
+                    if (isOnBoard(x + value[0], y + value[1]) and self.checkColor(new_pos) catch unreachable != side) self.addLegalMove(Move{ .from = pos, .to = intCast(u6, new_pos) });
+                }
+                // castles.
+                const startPos = if (side == .White) comptime squereToInt("e1") catch unreachable else comptime squereToInt("e8") catch unreachable;
+                const rook_color: Piece = if (side == .White) .Wrook else .Brook;
+                if (pos != startPos and self.hasPieceMoved(pos)) continue;
+                if (
+                // and are the squeres to O-O free??
+                self.checkColor(pos + 1) catch unreachable == null and self.checkColor(pos + 2) catch unreachable == null
+                    // and did the rook move??
+                and self.board[pos + 3] == rook_color and !self.hasPieceMoved(pos + 3)) {
+                    const move = Move{ .from = pos, .to = pos + 2 };
+                    self.addLegalMove(move);
+                }
+
+                if (
+                // and are the squeres to O-O free??
+                self.checkColor(pos - 1) catch unreachable == null and self.checkColor(pos - 2) catch unreachable == null
+                    // and did the rook move??
+                and self.board[pos - 4] == rook_color and !self.hasPieceMoved(pos - 4)) {
+                    const move = Move{ .from = pos, .to = pos - 2 };
+                    self.addLegalMove(move);
+                }
+            },
+            .empty => unreachable
         }
     }
 }
 
 
-test "legal moves pawn tests en passant" {
-    // Test white en passant capture
-    var board = fromFen("8/8/8/8/3p4/8/4P3/8");
-    _ = board.forceMakeMove(Move{ .from = try squereToInt("e2"), .to = try squereToInt("e4") });
-    board.getLegalMoves(.Black);
-    board.getLegalMoves(.White);
-    const white_ep = try Move.fromNotation("d4xe3", .Black);
-    try testing.expect(board.legalMoves[white_ep.toInt()]);
 
-    // Test black en passant capture
-    board = fromFen("8/4p3/8/3P4/8/8/8/8");
-    _ = board.forceMakeMove(Move{ .from = try squereToInt("e7"), .to = try squereToInt("e5") });
+test "legal moves king basic movements" {
+    // Test basic king movements in all 8 directions
+    var board = fromFen("8/8/8/3K4/8/8/8/8");
     board.getLegalMoves(.White);
-    board.getLegalMoves(.Black);
-    const black_ep = try Move.fromNotation("d5xe6", .White);
-    try testing.expect(board.legalMoves[black_ep.toInt()]);
 
-    // Test invalid en passant - no double move
-    board = fromFen("8/8/8/3p4/4p3/8/8/8");
-    board.getLegalMoves(.Black);
-    board.getLegalMoves(.White);
-    const invalid_ep = try Move.fromNotation("d5xe4", .Black);
-    try testing.expect(!board.legalMoves[invalid_ep.toInt()]);
-
-    // Test edge en passant
-    board = fromFen("8/p7/8/1P6/8/8/8/8");
-    _ = board.forceMakeMove(Move{ .from = try squereToInt("a7"), .to = try squereToInt("a5") });
-    board.getLegalMoves(.White);
-    const edge_ep = try Move.fromNotation("b5xa6", .White);
-    try testing.expect(board.legalMoves[edge_ep.toInt()]);
+    // Test all adjacent squares
+    try testing.expect(board.legalMoves[(try Move.fromNotation("d5-d6", .White)).toInt()]);
+    try testing.expect(board.legalMoves[(try Move.fromNotation("d5-e6", .White)).toInt()]);
+    try testing.expect(board.legalMoves[(try Move.fromNotation("d5-e5", .White)).toInt()]);
+    try testing.expect(board.legalMoves[(try Move.fromNotation("d5-e4", .White)).toInt()]);
+    try testing.expect(board.legalMoves[(try Move.fromNotation("d5-d4", .White)).toInt()]);
+    try testing.expect(board.legalMoves[(try Move.fromNotation("d5-c4", .White)).toInt()]);
+    try testing.expect(board.legalMoves[(try Move.fromNotation("d5-c5", .White)).toInt()]);
+    try testing.expect(board.legalMoves[(try Move.fromNotation("d5-c6", .White)).toInt()]);
 }
 
+test "legal moves king captures" {
+    // Test king captures of opposite color pieces
+    var board = fromFen("8/8/2ppp3/2pKp3/2ppp3/8/8/8");
+    board.getLegalMoves(.White);
+
+    // Test all capture moves
+    try testing.expect(board.legalMoves[(try Move.fromNotation("d5xc6", .White)).toInt()]);
+    try testing.expect(board.legalMoves[(try Move.fromNotation("d5xd6", .White)).toInt()]);
+    try testing.expect(board.legalMoves[(try Move.fromNotation("d5xe6", .White)).toInt()]);
+    try testing.expect(board.legalMoves[(try Move.fromNotation("d5xe5", .White)).toInt()]);
+    try testing.expect(board.legalMoves[(try Move.fromNotation("d5xe4", .White)).toInt()]);
+    try testing.expect(board.legalMoves[(try Move.fromNotation("d5xd4", .White)).toInt()]);
+    try testing.expect(board.legalMoves[(try Move.fromNotation("d5xc4", .White)).toInt()]);
+    try testing.expect(board.legalMoves[(try Move.fromNotation("d5xc5", .White)).toInt()]);
+}
+
+test "legal moves king castling" {
+    // Test castling moves
+    var board = fromFen("8/8/8/8/8/8/8/R3K2R");
+    board.getLegalMoves(.White);
+
+    // Test kingside castle
+    try testing.expect(board.legalMoves[(try Move.fromNotation("O-O", .White)).toInt()]);
+
+    // Test queenside castle
+    try testing.expect(board.legalMoves[(try Move.fromNotation("O-O-O", .White)).toInt()]);
+
+    // Test castling blocked by pieces
+    board = fromFen("8/8/8/8/8/8/8/R1N1K1BR");
+    board.getLegalMoves(.White);
+    try testing.expect(!board.legalMoves[(try Move.fromNotation("O-O", .White)).toInt()]);
+    try testing.expect(!board.legalMoves[(try Move.fromNotation("O-O-O", .White)).toInt()]);
+}
+
+test "legal moves king blocked moves" {
+    // Test king blocked by friendly pieces
+    var board = fromFen("8/8/2PPP3/2PKP3/2PPP3/8/8/8");
+    board.getLegalMoves(.White);
+
+    // Test all blocked moves
+    try testing.expect(!board.legalMoves[(try Move.fromNotation("d5-c6", .White)).toInt()]);
+    try testing.expect(!board.legalMoves[(try Move.fromNotation("d5-d6", .White)).toInt()]);
+    try testing.expect(!board.legalMoves[(try Move.fromNotation("d5-e6", .White)).toInt()]);
+    try testing.expect(!board.legalMoves[(try Move.fromNotation("d5-e5", .White)).toInt()]);
+    try testing.expect(!board.legalMoves[(try Move.fromNotation("d5-e4", .White)).toInt()]);
+    try testing.expect(!board.legalMoves[(try Move.fromNotation("d5-d4", .White)).toInt()]);
+    try testing.expect(!board.legalMoves[(try Move.fromNotation("d5-c4", .White)).toInt()]);
+    try testing.expect(!board.legalMoves[(try Move.fromNotation("d5-c5", .White)).toInt()]);
+}
 
 test "legal moves pawn tests capture moves" {
     var board = fromFen("8/8/8/3p4/4P3/8/8/8");
@@ -526,7 +661,6 @@ test "legal moves pawn tests capture moves" {
     const non_diag_cap = try Move.fromNotation("e4xe5", .White);
     try testing.expect(!board.legalMoves[non_diag_cap.toInt()]);
 }
-
 
 test "legal moves pawn tests classic moves" {
     var board = fromFen("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR");
@@ -588,11 +722,46 @@ test "legal moves pawn tests double moves" {
     try testing.expect(board.legalMoves[blocked_black.toInt()]);
 }
 
-test "getLegalMoves" {
-    var board = fromFen("8/8/8/8/4N3/8/8/8");
-
+test "legal moves knight basic movements" {
+    var board = fromFen("8/8/8/3N4/8/8/8/8");
     board.getLegalMoves(.White);
-    for ([_]u12{ 2852, 1828, 2852, 1828, 3364, 1316, 3364, 1316 }) |value| {
-        try testing.expect(board.legalMoves[value]);
-    }
+
+    try testing.expect(board.legalMoves[(try Move.fromNotation("d5-e7", .White)).toInt()]);
+    try testing.expect(board.legalMoves[(try Move.fromNotation("d5-f6", .White)).toInt()]);
+    try testing.expect(board.legalMoves[(try Move.fromNotation("d5-f4", .White)).toInt()]);
+    try testing.expect(board.legalMoves[(try Move.fromNotation("d5-e3", .White)).toInt()]);
+    try testing.expect(board.legalMoves[(try Move.fromNotation("d5-c3", .White)).toInt()]);
+    try testing.expect(board.legalMoves[(try Move.fromNotation("d5-b4", .White)).toInt()]);
+    try testing.expect(board.legalMoves[(try Move.fromNotation("d5-b6", .White)).toInt()]);
+    try testing.expect(board.legalMoves[(try Move.fromNotation("d5-c7", .White)).toInt()]);
+}
+
+test "legal moves knight captures" {
+    var board = fromFen("8/8/2p1p3/4N3/2p1p3/8/8/8");
+    board.getLegalMoves(.White);
+
+    try testing.expect(board.legalMoves[(try Move.fromNotation("e5xc6", .White)).toInt()]);
+    try testing.expect(board.legalMoves[(try Move.fromNotation("e5xc4", .White)).toInt()]);
+    try testing.expect(!board.legalMoves[(try Move.fromNotation("e5xe6", .White)).toInt()]);
+    try testing.expect(!board.legalMoves[(try Move.fromNotation("e5xe4", .White)).toInt()]);
+}
+
+test "legal moves knight blocked" {
+    var board = fromFen("8/8/2P1P3/4N3/2P1P3/8/8/8");
+    board.getLegalMoves(.White);
+
+    try testing.expect(!board.legalMoves[(try Move.fromNotation("e5-c6", .White)).toInt()]);
+    try testing.expect(!board.legalMoves[(try Move.fromNotation("e5-c4", .White)).toInt()]);
+    try testing.expect(!board.legalMoves[(try Move.fromNotation("e5-e6", .White)).toInt()]);
+    try testing.expect(!board.legalMoves[(try Move.fromNotation("e5-e4", .White)).toInt()]);
+}
+
+test "legal moves knight edge moves" {
+    var board = fromFen("8/8/8/8/8/8/8/N7");
+    board.getLegalMoves(.White);
+
+    try testing.expect(board.legalMoves[(try Move.fromNotation("a1-b3", .White)).toInt()]);
+    try testing.expect(board.legalMoves[(try Move.fromNotation("a1-c2", .White)).toInt()]);
+    try testing.expect(!board.legalMoves[(try Move.fromNotation("a1-b4", .White)).toInt()]);
+    try testing.expect(!board.legalMoves[(try Move.fromNotation("a1-c3", .White)).toInt()]);
 }
