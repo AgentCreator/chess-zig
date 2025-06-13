@@ -94,7 +94,7 @@ pub fn prettyPrint(self: Self) !void {
 pub fn listenForValidMove(self: Self, allocator: std.mem.Allocator) !Board.Move {
     const stdin = std.io.getStdIn().reader();
     const stderr = std.io.getStdErr().writer();
-    try stderr.print("{s}, your move!\n", .{if (self.currentSide == .Black) "White" else "Black"});
+    try stderr.print("{s}, your move!\n", .{if (self.currentSide == .Black) "Black" else "White"});
     const move = try stdin.readUntilDelimiterAlloc(allocator, '\n', 20);
     defer allocator.free(move);
     return Board.Move.fromNotation(move, self.currentSide) catch {
