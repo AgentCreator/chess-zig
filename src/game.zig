@@ -21,7 +21,7 @@ board: Board,
 currentSide: Board.Piece.Color,
 
 pub fn init(comptime pos: BoardStartingPosition) Self {
-    return Self{.board = Board.fromFen(switch (pos) {
+    return Self{ .board = Board.fromFen(switch (pos) {
         .Classic => "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR",
         .Custom => |p| p,
     }), .currentSide = .White };
@@ -55,7 +55,9 @@ pub fn playMove(self: *Self, move: Board.Move) error{ImpossibleMove}!void {
 test "hehe" {
     var chessboard = init(.Classic);
     try chessboard.prettyPrint();
-    try chessboard.playMove(try Board.Move.fromNotation("e2-e4", .White),);
+    try chessboard.playMove(
+        try Board.Move.fromNotation("e2-e4", .White),
+    );
     try chessboard.prettyPrint();
 }
 
@@ -84,7 +86,7 @@ pub fn prettyPrint(self: Self) !void {
             // std.debug.print("new layer!\n", .{});
             try stderr.print("{d} ", .{8 - @divFloor(i, 8)});
         }
-        try stderr.print("{u}{c}", .{piece, chr});
+        try stderr.print("{u}{c}", .{ piece, chr });
     }
     try stderr.print("  A B C D E F G H\n", .{});
 }

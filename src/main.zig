@@ -12,13 +12,11 @@ pub fn main() !void {
     var game = Game.init(.Classic);
     game.mainLoop(allocator) catch |err| switch (err) {
         error.EndGameError => {
-            try stderr.print("\n\nCheckmate! {s} won!\nGGs :)\n", .{
-                if (game.currentSide == .White) "White" else "Black"
-            });
+            try stderr.print("\n\nCheckmate! {s} won!\nGGs :)\n", .{if (game.currentSide == .White) "White" else "Black"});
         },
         else => {
             try stderr.print("game ended with an unknown reason: {!}\n", .{err});
-        }
+        },
     };
     // std.debug.print("{any}\n", .{move});
     defer _ = debug_allocator.deinit();
