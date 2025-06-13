@@ -1,9 +1,11 @@
+//! the code for the chessboard.
+
 const std = @import("std");
 const testing = @import("std").testing;
 
 const Self = @This();
 
-const Piece = enum {
+pub const Piece = enum {
     empty,
     Bking,
     Bqueen,
@@ -18,7 +20,7 @@ const Piece = enum {
     Wknight,
     Wpawn,
 
-    const Color = enum(u1) {
+    pub const Color = enum(u1) {
         White,
         Black,
     };
@@ -32,11 +34,15 @@ const Piece = enum {
     }
 };
 
-fn intCast(comptime T: type, int: anytype) T {
+/// converting numbers.
+/// trust me, its REALLY useful.
+inline fn intCast(comptime T: type, int: anytype) T {
     return @as(T, @intCast(int));
 }
 
-fn indexOf(comptime T: type, haystack: []const T, needle: T) error{NoNeedleFound}!usize {
+/// finds an index of an item.
+/// also can be used to find if a list contains an item.
+pub fn indexOf(comptime T: type, haystack: []const T, needle: T) error{NoNeedleFound}!usize {
     return blk: for (haystack, 0..) |e, idx| {
         if (e == needle) break :blk idx;
     } else error.NoNeedleFound;
@@ -98,9 +104,14 @@ pub const Move = packed struct(u12) {
     to: u6,
 
     pub fn fromNotation(notation: []const u8, color: Piece.Color) error{ NotAParsableMove, NoNeedleFound, WrongLength }!Move {
-        var splitNotation = std.mem.splitAny(u8, notation, " -xX");
-        const from, const to = .{ splitNotation.first(), splitNotation.rest() };
-        if (from.len == 1 and from[0] == 'O') {
+        var split_notation = std.mem.splitAny(u8, notation, " -xX");
+        const from, const to = .{ split_notation.first(), split_notation.rest() };
+        // yes you could do "O GAY"
+        // or even "O  "
+        // or even "OXXXO"
+        // but i don't care enough to fix it
+        // plus its funny
+        if (from.len == 1 and (from[0] == 'O' or from[0] == '0')) {
             //castles
             return Move{
                 .from = switch (color) {
@@ -117,6 +128,7 @@ pub const Move = packed struct(u12) {
             };
         }
         // goofy ahh solution
+        // its just to ignore the piece type, so you actually just do "Id4 d5"
         if (from.len == 3) return fromNotation(notation[1..], color);
 
         if (from.len != 2 or to.len != 2) {
@@ -126,7 +138,7 @@ pub const Move = packed struct(u12) {
         return Move{ .from = try squereToInt(from), .to = try squereToInt(to) };
     }
 
-    inline fn toInt(self: Move) u12 {
+    pub inline fn toInt(self: Move) u12 {
         return @bitCast(self);
     }
 };
@@ -180,9 +192,9 @@ test "move from notation" {
 
 board: [64]Piece = undefined,
 moveHistory: [9e3]?Move = @splat(null),
+legalMoves: [4096]bool = undefined,
 // 4096 = 2^12
 // intented usage: legalMoves[move.toInt()]
-legalMoves: [4096]bool = undefined,
 
 pub fn fromFen(comptime fen: []const u8) Self {
     var board: Self = Self{};
@@ -216,28 +228,6 @@ pub fn fromFen(comptime fen: []const u8) Self {
     return board;
 }
 
-pub fn prettyPrint(self: Self) void {
-    for (self.board, 0..) |pieceType, i| {
-        const piece: u21 = switch (pieceType) {
-            .empty => '.',
-            .Wpawn => '♙',
-            .Bpawn => '♟',
-            .Wknight => '♘',
-            .Bknight => '♞',
-            .Wbishop => '♗',
-            .Bbishop => '♝',
-            .Wrook => '♖',
-            .Brook => '♜',
-            .Wqueen => '♕',
-            .Bqueen => '♛',
-            .Wking => '♔',
-            .Bking => '♚',
-        };
-        const chr: u8 = if ((i + 1) % 8 == 0) '\n' else ' ';
-        std.debug.print("{u}{c}", .{ piece, chr });
-    }
-}
-
 test "fromFen" {
     const startingPosition = fromFen("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR");
     try testing.expectEqual(Piece.Brook, startingPosition.board[0]);
@@ -250,11 +240,15 @@ test "fromFen" {
     try testing.expectEqual(Piece.empty, emptyBoard.board[63]);
 }
 
-fn forceMakeMove(self: *Self, move: Move) void {
+pub fn forceMakeMove(self: *Self, move: Move) void {
     const piece = self.*.board[move.from];
     self.board[move.from] = .empty;
     self.board[move.to] = piece;
     self.addMove(move);
+}
+
+pub fn replacePiece(self: *Self, pos: u6, with: Piece) void {
+    self.board[pos] = with;
 }
 
 test "force make move test" {
@@ -343,7 +337,7 @@ inline fn checkColor(self: Self, squere: anytype) error{SquereOutsideBoard}!?Pie
     return if (squere < 0 or squere > 63) error.SquereOutsideBoard else self.board[intCast(u6, squere)].color();
 }
 
-fn firstFreeMove(self: Self) usize {
+pub fn firstFreeMove(self: Self) usize {
     return blk: for (self.moveHistory, 0..) |value, i| {
         if (value == null) break :blk i;
     } else unreachable;
@@ -427,7 +421,7 @@ test "hasPieceMoved untouched pieces" {
     try testing.expect(!board.hasPieceMoved(try squereToInt("h8")));
 }
 
-fn getLegalMoves(self: *Self, side: Piece.Color) void {
+pub fn getLegalMoves(self: *Self, side: Piece.Color) void {
     for (self.board, 0..) |piece, i| {
         if (piece.color() != side) continue;
         const pos = intCast(u6, i);
@@ -466,7 +460,10 @@ fn getLegalMoves(self: *Self, side: Piece.Color) void {
                     .{ -1, 2 },
                     .{ -1, -2 },
                 }) |value| {
-                    if (isOnBoard(x + value[0], y + value[1]) and self.checkColor((y + value[1]) * 8 + x) catch unreachable != side) self.addLegalMove(Move{ .from = pos, .to = intCast(u6, (y + value[1]) * 8 + (x + value[0])) });
+                    const new_pos = (y + value[1]) * 8 + (x + value[0]);
+                    if (isOnBoard(x + value[0], y + value[1]) and self.checkColor(new_pos) catch unreachable != side) {
+                        self.addLegalMove(Move{ .from = pos, .to = intCast(u6, new_pos) });
+                    }
                 }
             },
             .Wpawn, .Bpawn => {
@@ -501,11 +498,12 @@ fn getLegalMoves(self: *Self, side: Piece.Color) void {
                 if (self.firstFreeMove() == 0) continue;
                 const last_move: Move = self.moveHistory[self.firstFreeMove() - 1].?;
                 const did_double_move: bool = intCast(i7, last_move.from) - intCast(i7, last_move.to) == direction * 16;
-                if (pos % 8 != 0 and self.board[pos - 1] == opposite_piece and last_move.to == pos - 1 and did_double_move) {
+                if (!did_double_move) continue;
+                if (pos % 8 != 0 and self.board[pos - 1] == opposite_piece and last_move.to == pos - 1) {
                     const move = Move{ .from = pos, .to = intCast(u6, intCast(i7, pos) + direction * 8 - 1) };
                     self.addLegalMove(move);
                 }
-                if (pos % 8 != 7 and self.board[pos + 1] == opposite_piece and last_move.to == pos + 1 and did_double_move) {
+                if (pos % 8 != 7 and self.board[pos + 1] == opposite_piece and last_move.to == pos + 1) {
                     const move = Move{ .from = pos, .to = intCast(u6, intCast(i7, pos) + direction * 8 + 1) };
                     self.addLegalMove(move);
                 }
@@ -523,12 +521,14 @@ fn getLegalMoves(self: *Self, side: Piece.Color) void {
                     .{ -1, 1 },
                 }) |value| {
                     const new_pos = (y + value[1]) * 8 + (x + value[0]);
-                    if (isOnBoard(x + value[0], y + value[1]) and self.checkColor(new_pos) catch unreachable != side) self.addLegalMove(Move{ .from = pos, .to = intCast(u6, new_pos) });
+                    if (isOnBoard(x + value[0], y + value[1]) and self.checkColor(new_pos) catch unreachable != side) {
+                        self.addLegalMove(Move{ .from = pos, .to = intCast(u6, new_pos) });
+                    }
                 }
                 // castles.
-                const startPos = if (side == .White) comptime squereToInt("e1") catch unreachable else comptime squereToInt("e8") catch unreachable;
+                const start_pos = if (side == .White) comptime squereToInt("e1") catch unreachable else comptime squereToInt("e8") catch unreachable;
                 const rook_color: Piece = if (side == .White) .Wrook else .Brook;
-                if (pos != startPos and self.hasPieceMoved(pos)) continue;
+                if (pos != start_pos and self.hasPieceMoved(pos)) continue;
                 if (
                 // and are the squeres to O-O free??
                 self.checkColor(pos + 1) catch unreachable == null and self.checkColor(pos + 2) catch unreachable == null
@@ -547,12 +547,10 @@ fn getLegalMoves(self: *Self, side: Piece.Color) void {
                     self.addLegalMove(move);
                 }
             },
-            .empty => unreachable
+            .empty => unreachable,
         }
     }
 }
-
-
 
 test "legal moves king basic movements" {
     // Test basic king movements in all 8 directions

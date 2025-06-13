@@ -2,38 +2,26 @@
 //! you are building an executable. If you are making a library, the convention
 //! is to delete this file and start with root.zig instead.
 
-const Board = @import("board");
+// const Board = @import("board");
+const Game = @import("game");
+var debug_allocator: std.heap.DebugAllocator(.{}) = .init;
 
 pub fn main() !void {
-    var board = Board.fromFen("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR");
-
-    // Prints to stderr (it's a shortcut based on `std.io.getStdErr()`)
-
-    // stdout is for the actual output of your application, for example if you
-    // are implementing gzip, then only the compressed bytes should be sent to
-    // stdout, not any debugging messages.
-    board.prettyPrint();
-}
-
-test "simple test" {
-    var list = std.ArrayList(i32).init(std.testing.allocator);
-    defer list.deinit(); // Try commenting this out and see if zig detects the memory leak!
-    try list.append(42);
-    try std.testing.expectEqual(@as(i32, 42), list.pop());
-}
-
-test "fuzz example" {
-    const Context = struct {
-        fn testOne(context: @This(), input: []const u8) anyerror!void {
-            _ = context;
-            // Try passing `--fuzz` to `zig build test` and see if it manages to fail this test case!
-            try std.testing.expect(!std.mem.eql(u8, "canyoufindme", input));
+    const stderr = std.io.getStdErr().writer();
+    const allocator = debug_allocator.allocator();
+    var game = Game.init(.Classic);
+    game.mainLoop(allocator) catch |err| switch (err) {
+        error.EndGameError => {
+            try stderr.print("\n\nCheckmate! {s} won!\nGGs :)\n", .{
+                if (game.currentSide == .White) "White" else "Black"
+            });
+        },
+        else => {
+            try stderr.print("game ended with an unknown reason: {!}\n", .{err});
         }
     };
-    try std.testing.fuzz(Context{}, Context.testOne, .{});
+    // std.debug.print("{any}\n", .{move});
+    defer _ = debug_allocator.deinit();
 }
 
 const std = @import("std");
-
-/// This imports the separate module containing `root.zig`. Take a look in `build.zig` for details.
-const lib = @import("chess2_lib");

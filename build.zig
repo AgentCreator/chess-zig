@@ -43,12 +43,18 @@ pub fn build(b: *std.Build) void {
         .optimize = optimize,
         .target = target,
     });
+    const game_mod = b.createModule(.{
+        .root_source_file = b.path("src/game.zig"),
+        .optimize = optimize,
+        .target = target,
+    });
 
     // Modules can depend on one another using the `std.Build.Module.addImport` function.
     // This is what allows Zig source code to use `@import("foo")` where 'foo' is not a
     // file path. In this case, we set up `exe_mod` to import `lib_mod`.
     exe_mod.addImport("chess2_lib", lib_mod);
-    exe_mod.addImport("board", board_mod);
+    exe_mod.addImport("game", game_mod);
+    game_mod.addImport("board", board_mod);
     board_mod.addImport("chess2_lib", lib_mod);
 
     // Now, we will create a static library based on the module we created above.
@@ -117,8 +123,13 @@ pub fn build(b: *std.Build) void {
         .root_module = board_mod,
     });
 
+    const game_unit_tests = b.addTest(.{
+        .root_module = game_mod,
+    });
+
     const run_exe_unit_tests = b.addRunArtifact(exe_unit_tests);
     const run_board_tests = b.addRunArtifact(board_unit_tests);
+    const run_game_tests = b.addRunArtifact(game_unit_tests);
 
     // Similar to creating the run step earlier, this exposes a `test` step to
     // the `zig build --help` menu, providing a way for the user to request
@@ -127,4 +138,5 @@ pub fn build(b: *std.Build) void {
     test_step.dependOn(&run_lib_unit_tests.step);
     test_step.dependOn(&run_exe_unit_tests.step);
     test_step.dependOn(&run_board_tests.step);
+    test_step.dependOn(&run_game_tests.step);
 }
