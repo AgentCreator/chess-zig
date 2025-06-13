@@ -255,6 +255,7 @@ fn forceMakeMove(self: *Self, move: Move) void {
     const piece = self.*.board[move.from];
     self.board[move.from] = .empty;
     self.board[move.to] = piece;
+    self.addMove(move);
 }
 
 test "force make move test" {
@@ -276,6 +277,30 @@ test "force make move test" {
     board.forceMakeMove(Move{ .from = try squereToInt("g1"), .to = try squereToInt("f3") });
     try testing.expectEqual(Piece.empty, board.board[try squereToInt("g1")]);
     try testing.expectEqual(Piece.Wknight, board.board[try squereToInt("f3")]);
+}
+
+fn addMove(self: *Self, move: Move) void {
+    self.moveHistory[self.firstFreeMove()] = move;
+}
+
+test "addMove" {
+    var board = fromFen("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR");
+
+    // Test adding a single move
+    const move1 = Move{ .from = try squereToInt("e2"), .to = try squereToInt("e4") };
+    board.addMove(move1);
+    try testing.expectEqual(move1, board.moveHistory[0].?);
+    try testing.expectEqual(@as(?Move, null), board.moveHistory[1]);
+
+    // Test adding multiple moves
+    const move2 = Move{ .from = try squereToInt("e7"), .to = try squereToInt("e5") };
+    board.addMove(move2);
+    try testing.expectEqual(move2, board.moveHistory[1].?);
+    try testing.expectEqual(@as(?Move, null), board.moveHistory[2]);
+
+    // Test that remaining slots are null
+    try testing.expectEqual(@as(?Move, null), board.moveHistory[3]);
+    try testing.expectEqual(@as(?Move, null), board.moveHistory[100]);
 }
 
 fn addLegalMove(self: *Self, move: Move) void {
@@ -319,8 +344,13 @@ fn addDirections(self: *Self, start: u6, comptime directions: []const [2]i8) voi
 }
 
 inline fn checkColor(self: Self, squere: anytype) error{SquereOutsideBoard}!?Piece.Color {
-    if (squere < 0 or squere > 63) return error.SquereOutsideBoard;
-    return self.board[intCast(u6, squere)].color();
+    return if (squere < 0 or squere > 63) error.SquereOutsideBoard else self.board[intCast(u6, squere)].color();
+}
+
+fn firstFreeMove(self: Self) usize {
+    return blk: for (self.moveHistory, 0..) |value, i| {
+        if (value == null) break :blk i;
+    } else unreachable;
 }
 
 fn getLegalMoves(self: *Self, side: Piece.Color) void {
@@ -387,22 +417,73 @@ fn getLegalMoves(self: *Self, side: Piece.Color) void {
                 // capture
                 const opposite_side: Piece.Color = if (side == .White) .Black else .White;
                 if (pos % 8 != 0 and self.checkColor(intCast(i7, pos) + direction * 8 - 1) catch unreachable == opposite_side) {
-                    const move = Move{.from = pos, .to = intCast(u6, intCast(i7, pos) + direction * 8 - 1)};
+                    const move = Move{ .from = pos, .to = intCast(u6, intCast(i7, pos) + direction * 8 - 1) };
                     // std.debug.print("capture allowed! {any}\n ", .{move});
                     self.addLegalMove(move);
                 }
                 if (pos % 8 != 7 and self.checkColor(intCast(i7, pos) + direction * 8 + 1) catch unreachable == opposite_side) {
-                    const move = Move{.from = pos, .to = intCast(u6, intCast(i7, pos) + direction * 8 + 1)};
+                    const move = Move{ .from = pos, .to = intCast(u6, intCast(i7, pos) + direction * 8 + 1) };
                     // std.debug.print("capture allowed! {any}\n ", .{move});
                     self.addLegalMove(move);
                 }
 
                 // TODO: make enpassant
+                const opposite_piece: Piece = switch (opposite_side) {
+                    .White => .Wpawn,
+                    .Black => .Bpawn,
+                };
+                if (self.firstFreeMove() == 0) continue;
+                const last_move: Move = self.moveHistory[self.firstFreeMove()-1].?;
+                const did_double_move: bool = intCast(i7, last_move.from) - intCast(i7, last_move.to) == direction * 16;
+                if (pos % 8 != 0 and self.board[pos - 1] == opposite_piece and last_move.to == pos - 1 and did_double_move) {
+                    const move = Move{ .from = pos, .to = intCast(u6, intCast(i7, pos) + direction * 8 - 1) };
+                    // std.debug.print("en passant allowed! {any}\n ", .{move});
+                    self.addLegalMove(move);
+                }
+                if (pos % 8 != 7 and self.board[pos + 1] == opposite_piece and last_move.to == pos + 1 and did_double_move) {
+                    const move = Move{ .from = pos, .to = intCast(u6, intCast(i7, pos) + direction * 8 + 1) };
+                    // std.debug.print("en passant allowed! {any}\n ", .{move});
+                    self.addLegalMove(move);
+                }
             },
             else => {},
         }
     }
 }
+
+
+test "legal moves pawn tests en passant" {
+    // Test white en passant capture
+    var board = fromFen("8/8/8/8/3p4/8/4P3/8");
+    _ = board.forceMakeMove(Move{ .from = try squereToInt("e2"), .to = try squereToInt("e4") });
+    board.getLegalMoves(.Black);
+    board.getLegalMoves(.White);
+    const white_ep = try Move.fromNotation("d4xe3", .Black);
+    try testing.expect(board.legalMoves[white_ep.toInt()]);
+
+    // Test black en passant capture
+    board = fromFen("8/4p3/8/3P4/8/8/8/8");
+    _ = board.forceMakeMove(Move{ .from = try squereToInt("e7"), .to = try squereToInt("e5") });
+    board.getLegalMoves(.White);
+    board.getLegalMoves(.Black);
+    const black_ep = try Move.fromNotation("d5xe6", .White);
+    try testing.expect(board.legalMoves[black_ep.toInt()]);
+
+    // Test invalid en passant - no double move
+    board = fromFen("8/8/8/3p4/4p3/8/8/8");
+    board.getLegalMoves(.Black);
+    board.getLegalMoves(.White);
+    const invalid_ep = try Move.fromNotation("d5xe4", .Black);
+    try testing.expect(!board.legalMoves[invalid_ep.toInt()]);
+
+    // Test edge en passant
+    board = fromFen("8/p7/8/1P6/8/8/8/8");
+    _ = board.forceMakeMove(Move{ .from = try squereToInt("a7"), .to = try squereToInt("a5") });
+    board.getLegalMoves(.White);
+    const edge_ep = try Move.fromNotation("b5xa6", .White);
+    try testing.expect(board.legalMoves[edge_ep.toInt()]);
+}
+
 
 test "legal moves pawn tests capture moves" {
     var board = fromFen("8/8/8/3p4/4P3/8/8/8");
@@ -444,8 +525,8 @@ test "legal moves pawn tests capture moves" {
     board.getLegalMoves(.White);
     const non_diag_cap = try Move.fromNotation("e4xe5", .White);
     try testing.expect(!board.legalMoves[non_diag_cap.toInt()]);
-
 }
+
 
 test "legal moves pawn tests classic moves" {
     var board = fromFen("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR");
