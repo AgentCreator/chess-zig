@@ -28,10 +28,10 @@ pub fn init(comptime pos: BoardStartingPosition) Self {
 }
 
 pub fn playMove(self: *Self, move: Board.Move) error{ImpossibleMove}!void {
-    self.board.legalMoves = @splat(false);
+    self.board.legal_moves = @splat(false);
     self.board.getLegalMoves(self.currentSide);
     defer self.currentSide = if (self.currentSide == Board.Piece.Color.White) Board.Piece.Color.Black else Board.Piece.Color.White;
-    if (!self.board.legalMoves[move.toInt()]) return error.ImpossibleMove;
+    if (!self.board.legal_moves[move.toInt()]) return error.ImpossibleMove;
     const piece = self.board.board[move.from];
     self.board.forceMakeMove(move);
     if (piece != .Wking and piece != .Bking and piece != .Wpawn and piece != .Bpawn) return;

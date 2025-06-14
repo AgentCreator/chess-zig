@@ -5,6 +5,7 @@ const testing = @import("std").testing;
 
 const Self = @This();
 
+/// a chess piece.
 pub const Piece = enum {
     empty,
     Bking,
@@ -19,12 +20,13 @@ pub const Piece = enum {
     Wbishop,
     Wknight,
     Wpawn,
-
+    /// a chess piece color.
     pub const Color = enum(u1) {
         White,
         Black,
     };
-
+    /// get a chess piece color from a piece.
+    /// .empty = null.
     fn color(self: Piece) ?Color {
         if (self == .empty) return null;
         return switch (self) {
@@ -76,7 +78,8 @@ test "indexOf tests error" {
     try testing.expectError(error.NoNeedleFound, indexOf(i32, &[_]i32{ 1, 2, 3 }, 5));
     try testing.expectError(error.NoNeedleFound, indexOf(bool, &[_]bool{ true, true }, false));
 }
-
+/// converts a squere notation like `a1`
+/// to its respective index on the board, so 56
 fn squereToInt(squere: []const u8) error{ NoNeedleFound, WrongLength }!u6 {
     if (squere.len != 2) return error.WrongLength;
     const cols = "abcdefgh";
@@ -103,6 +106,8 @@ pub const Move = packed struct(u12) {
     from: u6,
     to: u6,
 
+    /// converts the long algebraic notation to a move.
+    /// TODO: accept a short version of the notation too, so `e2-e4` becomes `e2e4`
     pub fn fromNotation(notation: []const u8, color: Piece.Color) error{ NotAParsableMove, NoNeedleFound, WrongLength }!Move {
         var split_notation = std.mem.splitAny(u8, notation, " -xX");
         const from, const to = .{ split_notation.first(), split_notation.rest() };
@@ -138,6 +143,7 @@ pub const Move = packed struct(u12) {
         return Move{ .from = try squereToInt(from), .to = try squereToInt(to) };
     }
 
+    /// converts a `Move` to an integer
     pub inline fn toInt(self: Move) u12 {
         return @bitCast(self);
     }
@@ -189,13 +195,16 @@ test "move from notation" {
 }
 
 // BOARD
-
+/// The board itself
 board: [64]Piece = undefined,
-moveHistory: [9e3]?Move = @splat(null),
-legalMoves: [4096]bool = undefined,
-// 4096 = 2^12
-// intented usage: legalMoves[move.toInt()]
+/// The move history, apperently the largest possible chess game is 8455 moves or something
+move_history: [9e3]?Move = @splat(null),
+/// the legal moves array.
+/// 4096 = 2^@bitSizeOf(Move)
+/// intented usage: legal_moves[move.toInt()]
+legal_moves: [4096]bool = undefined,
 
+/// converts a FEN Notation into a board.
 pub fn fromFen(comptime fen: []const u8) Self {
     var board: Self = Self{};
 
@@ -239,14 +248,16 @@ test "fromFen" {
     try testing.expectEqual(Piece.empty, emptyBoard.board[0]);
     try testing.expectEqual(Piece.empty, emptyBoard.board[63]);
 }
-
+/// forcably makes a move happen on the board.
+/// also adds this move to the `move_history`.
 pub fn forceMakeMove(self: *Self, move: Move) void {
     const piece = self.*.board[move.from];
     self.board[move.from] = .empty;
     self.board[move.to] = piece;
     self.addMove(move);
 }
-
+/// replaces a piece on the board.
+/// useful for en passant and moves that don't get added to the `move_history` list, like castles
 pub fn replacePiece(self: *Self, pos: u6, with: Piece) void {
     self.board[pos] = with;
 }
@@ -271,9 +282,9 @@ test "force make move test" {
     try testing.expectEqual(Piece.empty, board.board[try squereToInt("g1")]);
     try testing.expectEqual(Piece.Wknight, board.board[try squereToInt("f3")]);
 }
-
+/// adds a move to the `move_history` list.
 fn addMove(self: *Self, move: Move) void {
-    self.moveHistory[self.firstFreeMove()] = move;
+    self.move_history[self.firstFreeMove()] = move;
 }
 
 test "addMove" {
@@ -282,24 +293,26 @@ test "addMove" {
     // Test adding a single move
     const move1 = Move{ .from = try squereToInt("e2"), .to = try squereToInt("e4") };
     board.addMove(move1);
-    try testing.expectEqual(move1, board.moveHistory[0].?);
-    try testing.expectEqual(@as(?Move, null), board.moveHistory[1]);
+    try testing.expectEqual(move1, board.move_history[0].?);
+    try testing.expectEqual(@as(?Move, null), board.move_history[1]);
 
     // Test adding multiple moves
     const move2 = Move{ .from = try squereToInt("e7"), .to = try squereToInt("e5") };
     board.addMove(move2);
-    try testing.expectEqual(move2, board.moveHistory[1].?);
-    try testing.expectEqual(@as(?Move, null), board.moveHistory[2]);
+    try testing.expectEqual(move2, board.move_history[1].?);
+    try testing.expectEqual(@as(?Move, null), board.move_history[2]);
 
     // Test that remaining slots are null
-    try testing.expectEqual(@as(?Move, null), board.moveHistory[3]);
-    try testing.expectEqual(@as(?Move, null), board.moveHistory[100]);
+    try testing.expectEqual(@as(?Move, null), board.move_history[3]);
+    try testing.expectEqual(@as(?Move, null), board.move_history[100]);
 }
 
+/// adds a legal move to the `legal_moves` list.
 fn addLegalMove(self: *Self, move: Move) void {
-    self.legalMoves[move.toInt()] = true;
+    self.legal_moves[move.toInt()] = true;
 }
-
+/// gets the X and the Y of a position on the board.
+/// intended usage: `const x, const y = getXYfromPos(pos);`
 fn getXYfromPos(pos: u6) [2]i8 {
     return .{ @mod(pos, 8), @divFloor(pos, 8) };
 }
@@ -312,11 +325,16 @@ test "getXYfromPos" {
     try testing.expectEqual([2]i8{ 4, 3 }, getXYfromPos(28)); // e5
     try testing.expectEqual([2]i8{ 2, 5 }, getXYfromPos(42)); // c3
 }
-
+/// checks if X and Y match a position on the board.
 inline fn isOnBoard(x: i8, y: i8) bool {
     return x >= 0 and x < 8 and y >= 0 and y < 8;
 }
 
+/// adds moves in a couple of directions.
+/// useful for:
+///   - rook
+///   - bishop
+///   - queen
 fn addDirections(self: *Self, start: u6, comptime directions: []const [2]i8) void {
     const color = self.board[start].color().?;
     for (directions) |direction| {
@@ -326,25 +344,26 @@ fn addDirections(self: *Self, start: u6, comptime directions: []const [2]i8) voi
             x += direction[0];
             y += direction[1];
             newPos = y * 8 + x;
-            if (!isOnBoard(x, y) or self.board[intCast(usize, newPos)].color() == color) break;
-
-            self.addLegalMove(Move{ .from = start, .to = intCast(u6, newPos) });
+            if (!isOnBoard(x, y) or self.board[@intCast(newPos)].color() == color) break;
+            self.addLegalMove(Move{ .from = start, .to = @intCast(newPos) });
         }
     }
 }
-
+/// checks the color of a piece on a squere.
+/// its more useful then it seems.
 inline fn checkColor(self: Self, squere: anytype) error{SquereOutsideBoard}!?Piece.Color {
-    return if (squere < 0 or squere > 63) error.SquereOutsideBoard else self.board[intCast(u6, squere)].color();
+    return if (squere < 0 or squere > 63) error.SquereOutsideBoard else self.board[@intCast(squere)].color();
 }
 
+/// returns the index of the first free move in the `move_history`.
 pub fn firstFreeMove(self: Self) usize {
-    return blk: for (self.moveHistory, 0..) |value, i| {
+    return blk: for (self.move_history, 0..) |value, i| {
         if (value == null) break :blk i;
     } else unreachable;
 }
-
+/// checks if the piece on the given position moved.
 fn hasPieceMoved(self: Self, piece_pos: u6) bool {
-    return for (self.moveHistory) |move| {
+    return for (self.move_history) |move| {
         if (move == null) break false;
         if (move.?.to == piece_pos) break true;
     } else unreachable;
@@ -421,10 +440,11 @@ test "hasPieceMoved untouched pieces" {
     try testing.expect(!board.hasPieceMoved(try squereToInt("h8")));
 }
 
+/// populates the `legal_moves` list.
 pub fn getLegalMoves(self: *Self, side: Piece.Color) void {
     for (self.board, 0..) |piece, i| {
         if (piece.color() != side) continue;
-        const pos = intCast(u6, i);
+        const pos: u6 = @intCast(i);
         switch (piece) {
             .Wrook, .Brook => self.addDirections(pos, &.{
                 .{ 1, 0 },
@@ -462,7 +482,7 @@ pub fn getLegalMoves(self: *Self, side: Piece.Color) void {
                 }) |value| {
                     const new_pos = (y + value[1]) * 8 + (x + value[0]);
                     if (isOnBoard(x + value[0], y + value[1]) and self.checkColor(new_pos) catch unreachable != side) {
-                        self.addLegalMove(Move{ .from = pos, .to = intCast(u6, new_pos) });
+                        self.addLegalMove(Move{ .from = pos, .to = @intCast(new_pos) });
                     }
                 }
             },
@@ -471,7 +491,7 @@ pub fn getLegalMoves(self: *Self, side: Piece.Color) void {
                 // classic movement
                 var sq: i8 = intCast(i8, pos) + direction * 8;
                 if (self.checkColor(sq) catch unreachable == null) {
-                    const new_move1 = Move{ .from = pos, .to = intCast(u6, sq) };
+                    const new_move1 = Move{ .from = pos, .to = @intCast(sq) };
                     self.addLegalMove(new_move1);
                     sq += direction * 8;
                     // double movement
@@ -479,7 +499,7 @@ pub fn getLegalMoves(self: *Self, side: Piece.Color) void {
                         .White => pos >= 48 and pos < 56,
                         .Black => pos >= 8 and pos < 16,
                     }) {
-                        const new_move2 = Move{ .from = pos, .to = intCast(u6, sq) };
+                        const new_move2 = Move{ .from = pos, .to = @intCast(sq) };
                         self.addLegalMove(new_move2);
                     }
                 }
@@ -487,24 +507,24 @@ pub fn getLegalMoves(self: *Self, side: Piece.Color) void {
                 // capture
                 const opposite_side: Piece.Color = if (side == .White) .Black else .White;
                 if (pos % 8 != 0 and self.checkColor(intCast(i7, pos) + direction * 8 - 1) catch unreachable == opposite_side) {
-                    const move = Move{ .from = pos, .to = intCast(u6, intCast(i7, pos) + direction * 8 - 1) };
+                    const move = Move{ .from = pos, .to = @intCast(intCast(i7, pos) + direction * 8 - 1) };
                     self.addLegalMove(move);
                 }
                 if (pos % 8 != 7 and self.checkColor(intCast(i7, pos) + direction * 8 + 1) catch unreachable == opposite_side) {
-                    const move = Move{ .from = pos, .to = intCast(u6, intCast(i7, pos) + direction * 8 + 1) };
+                    const move = Move{ .from = pos, .to = @intCast(intCast(i7, pos) + direction * 8 + 1) };
                     self.addLegalMove(move);
                 }
                 const opposite_piece: Piece = if (opposite_side == .Black) .Bpawn else .Wpawn;
                 if (self.firstFreeMove() == 0) continue;
-                const last_move: Move = self.moveHistory[self.firstFreeMove() - 1].?;
+                const last_move: Move = self.move_history[self.firstFreeMove() - 1].?;
                 const did_double_move: bool = intCast(i7, last_move.from) - intCast(i7, last_move.to) == direction * 16;
                 if (!did_double_move) continue;
                 if (pos % 8 != 0 and self.board[pos - 1] == opposite_piece and last_move.to == pos - 1) {
-                    const move = Move{ .from = pos, .to = intCast(u6, intCast(i7, pos) + direction * 8 - 1) };
+                    const move = Move{ .from = pos, .to = @intCast(intCast(i7, pos) + direction * 8 - 1) };
                     self.addLegalMove(move);
                 }
                 if (pos % 8 != 7 and self.board[pos + 1] == opposite_piece and last_move.to == pos + 1) {
-                    const move = Move{ .from = pos, .to = intCast(u6, intCast(i7, pos) + direction * 8 + 1) };
+                    const move = Move{ .from = pos, .to = @intCast(intCast(i7, pos) + direction * 8 + 1) };
                     self.addLegalMove(move);
                 }
             },
@@ -522,7 +542,7 @@ pub fn getLegalMoves(self: *Self, side: Piece.Color) void {
                 }) |value| {
                     const new_pos = (y + value[1]) * 8 + (x + value[0]);
                     if (isOnBoard(x + value[0], y + value[1]) and self.checkColor(new_pos) catch unreachable != side) {
-                        self.addLegalMove(Move{ .from = pos, .to = intCast(u6, new_pos) });
+                        self.addLegalMove(Move{ .from = pos, .to = @intCast(new_pos) });
                     }
                 }
                 // castles.
@@ -558,14 +578,14 @@ test "legal moves king basic movements" {
     board.getLegalMoves(.White);
 
     // Test all adjacent squares
-    try testing.expect(board.legalMoves[(try Move.fromNotation("d5-d6", .White)).toInt()]);
-    try testing.expect(board.legalMoves[(try Move.fromNotation("d5-e6", .White)).toInt()]);
-    try testing.expect(board.legalMoves[(try Move.fromNotation("d5-e5", .White)).toInt()]);
-    try testing.expect(board.legalMoves[(try Move.fromNotation("d5-e4", .White)).toInt()]);
-    try testing.expect(board.legalMoves[(try Move.fromNotation("d5-d4", .White)).toInt()]);
-    try testing.expect(board.legalMoves[(try Move.fromNotation("d5-c4", .White)).toInt()]);
-    try testing.expect(board.legalMoves[(try Move.fromNotation("d5-c5", .White)).toInt()]);
-    try testing.expect(board.legalMoves[(try Move.fromNotation("d5-c6", .White)).toInt()]);
+    try testing.expect(board.legal_moves[(try Move.fromNotation("d5-d6", .White)).toInt()]);
+    try testing.expect(board.legal_moves[(try Move.fromNotation("d5-e6", .White)).toInt()]);
+    try testing.expect(board.legal_moves[(try Move.fromNotation("d5-e5", .White)).toInt()]);
+    try testing.expect(board.legal_moves[(try Move.fromNotation("d5-e4", .White)).toInt()]);
+    try testing.expect(board.legal_moves[(try Move.fromNotation("d5-d4", .White)).toInt()]);
+    try testing.expect(board.legal_moves[(try Move.fromNotation("d5-c4", .White)).toInt()]);
+    try testing.expect(board.legal_moves[(try Move.fromNotation("d5-c5", .White)).toInt()]);
+    try testing.expect(board.legal_moves[(try Move.fromNotation("d5-c6", .White)).toInt()]);
 }
 
 test "legal moves king captures" {
@@ -574,14 +594,14 @@ test "legal moves king captures" {
     board.getLegalMoves(.White);
 
     // Test all capture moves
-    try testing.expect(board.legalMoves[(try Move.fromNotation("d5xc6", .White)).toInt()]);
-    try testing.expect(board.legalMoves[(try Move.fromNotation("d5xd6", .White)).toInt()]);
-    try testing.expect(board.legalMoves[(try Move.fromNotation("d5xe6", .White)).toInt()]);
-    try testing.expect(board.legalMoves[(try Move.fromNotation("d5xe5", .White)).toInt()]);
-    try testing.expect(board.legalMoves[(try Move.fromNotation("d5xe4", .White)).toInt()]);
-    try testing.expect(board.legalMoves[(try Move.fromNotation("d5xd4", .White)).toInt()]);
-    try testing.expect(board.legalMoves[(try Move.fromNotation("d5xc4", .White)).toInt()]);
-    try testing.expect(board.legalMoves[(try Move.fromNotation("d5xc5", .White)).toInt()]);
+    try testing.expect(board.legal_moves[(try Move.fromNotation("d5xc6", .White)).toInt()]);
+    try testing.expect(board.legal_moves[(try Move.fromNotation("d5xd6", .White)).toInt()]);
+    try testing.expect(board.legal_moves[(try Move.fromNotation("d5xe6", .White)).toInt()]);
+    try testing.expect(board.legal_moves[(try Move.fromNotation("d5xe5", .White)).toInt()]);
+    try testing.expect(board.legal_moves[(try Move.fromNotation("d5xe4", .White)).toInt()]);
+    try testing.expect(board.legal_moves[(try Move.fromNotation("d5xd4", .White)).toInt()]);
+    try testing.expect(board.legal_moves[(try Move.fromNotation("d5xc4", .White)).toInt()]);
+    try testing.expect(board.legal_moves[(try Move.fromNotation("d5xc5", .White)).toInt()]);
 }
 
 test "legal moves king castling" {
@@ -590,16 +610,16 @@ test "legal moves king castling" {
     board.getLegalMoves(.White);
 
     // Test kingside castle
-    try testing.expect(board.legalMoves[(try Move.fromNotation("O-O", .White)).toInt()]);
+    try testing.expect(board.legal_moves[(try Move.fromNotation("O-O", .White)).toInt()]);
 
     // Test queenside castle
-    try testing.expect(board.legalMoves[(try Move.fromNotation("O-O-O", .White)).toInt()]);
+    try testing.expect(board.legal_moves[(try Move.fromNotation("O-O-O", .White)).toInt()]);
 
     // Test castling blocked by pieces
     board = fromFen("8/8/8/8/8/8/8/R1N1K1BR");
     board.getLegalMoves(.White);
-    try testing.expect(!board.legalMoves[(try Move.fromNotation("O-O", .White)).toInt()]);
-    try testing.expect(!board.legalMoves[(try Move.fromNotation("O-O-O", .White)).toInt()]);
+    try testing.expect(!board.legal_moves[(try Move.fromNotation("O-O", .White)).toInt()]);
+    try testing.expect(!board.legal_moves[(try Move.fromNotation("O-O-O", .White)).toInt()]);
 }
 
 test "legal moves king blocked moves" {
@@ -608,14 +628,14 @@ test "legal moves king blocked moves" {
     board.getLegalMoves(.White);
 
     // Test all blocked moves
-    try testing.expect(!board.legalMoves[(try Move.fromNotation("d5-c6", .White)).toInt()]);
-    try testing.expect(!board.legalMoves[(try Move.fromNotation("d5-d6", .White)).toInt()]);
-    try testing.expect(!board.legalMoves[(try Move.fromNotation("d5-e6", .White)).toInt()]);
-    try testing.expect(!board.legalMoves[(try Move.fromNotation("d5-e5", .White)).toInt()]);
-    try testing.expect(!board.legalMoves[(try Move.fromNotation("d5-e4", .White)).toInt()]);
-    try testing.expect(!board.legalMoves[(try Move.fromNotation("d5-d4", .White)).toInt()]);
-    try testing.expect(!board.legalMoves[(try Move.fromNotation("d5-c4", .White)).toInt()]);
-    try testing.expect(!board.legalMoves[(try Move.fromNotation("d5-c5", .White)).toInt()]);
+    try testing.expect(!board.legal_moves[(try Move.fromNotation("d5-c6", .White)).toInt()]);
+    try testing.expect(!board.legal_moves[(try Move.fromNotation("d5-d6", .White)).toInt()]);
+    try testing.expect(!board.legal_moves[(try Move.fromNotation("d5-e6", .White)).toInt()]);
+    try testing.expect(!board.legal_moves[(try Move.fromNotation("d5-e5", .White)).toInt()]);
+    try testing.expect(!board.legal_moves[(try Move.fromNotation("d5-e4", .White)).toInt()]);
+    try testing.expect(!board.legal_moves[(try Move.fromNotation("d5-d4", .White)).toInt()]);
+    try testing.expect(!board.legal_moves[(try Move.fromNotation("d5-c4", .White)).toInt()]);
+    try testing.expect(!board.legal_moves[(try Move.fromNotation("d5-c5", .White)).toInt()]);
 }
 
 test "legal moves pawn tests capture moves" {
@@ -624,40 +644,40 @@ test "legal moves pawn tests capture moves" {
     board.getLegalMoves(.Black);
     const white_cap_left = try Move.fromNotation("e4xd5", .White);
     const black_cap_right = try Move.fromNotation("d5xe4", .Black);
-    try testing.expect(board.legalMoves[white_cap_left.toInt()]);
-    try testing.expect(board.legalMoves[black_cap_right.toInt()]);
+    try testing.expect(board.legal_moves[white_cap_left.toInt()]);
+    try testing.expect(board.legal_moves[black_cap_right.toInt()]);
 
     board = fromFen("8/8/8/pp6/PP6/8/8/8");
     board.getLegalMoves(.White);
     board.getLegalMoves(.Black);
     const white_edge_cap = try Move.fromNotation("a4xb5", .White);
     const black_edge_cap = try Move.fromNotation("a5xb4", .Black);
-    try testing.expect(board.legalMoves[white_edge_cap.toInt()]);
-    try testing.expect(board.legalMoves[black_edge_cap.toInt()]);
+    try testing.expect(board.legal_moves[white_edge_cap.toInt()]);
+    try testing.expect(board.legal_moves[black_edge_cap.toInt()]);
 
     board = fromFen("8/8/3p4/3p4/4P3/8/8/8");
     board.getLegalMoves(.White);
     board.getLegalMoves(.Black);
     const blocked_white_cap = try Move.fromNotation("e4xd5", .White);
-    try testing.expect(board.legalMoves[blocked_white_cap.toInt()]);
+    try testing.expect(board.legal_moves[blocked_white_cap.toInt()]);
 
     // Invalid captures - empty diagonal squares
     board = fromFen("8/8/8/8/4P3/8/8/8");
     board.getLegalMoves(.White);
     const empty_diag_cap = try Move.fromNotation("e4xd5", .White);
-    try testing.expect(!board.legalMoves[empty_diag_cap.toInt()]);
+    try testing.expect(!board.legal_moves[empty_diag_cap.toInt()]);
 
     // Invalid captures - same color pieces
     board = fromFen("8/8/8/3P4/4P3/8/8/8");
     board.getLegalMoves(.White);
     const same_color_cap = try Move.fromNotation("e4xd5", .White);
-    try testing.expect(!board.legalMoves[same_color_cap.toInt()]);
+    try testing.expect(!board.legal_moves[same_color_cap.toInt()]);
 
     // Invalid captures - non-diagonal squares
     board = fromFen("8/8/8/4p3/4P3/8/8/8");
     board.getLegalMoves(.White);
     const non_diag_cap = try Move.fromNotation("e4xe5", .White);
-    try testing.expect(!board.legalMoves[non_diag_cap.toInt()]);
+    try testing.expect(!board.legal_moves[non_diag_cap.toInt()]);
 }
 
 test "legal moves pawn tests classic moves" {
@@ -666,26 +686,26 @@ test "legal moves pawn tests classic moves" {
     board.getLegalMoves(.Black);
     // white
     for (48..56) |i| {
-        const move = Move{ .from = intCast(u6, i), .to = intCast(u6, i - 8) };
-        try testing.expect(board.legalMoves[move.toInt()]);
+        const move = Move{ .from = @intCast(i), .to = @intCast(i - 8) };
+        try testing.expect(board.legal_moves[move.toInt()]);
     }
     // black
     for (8..16) |i| {
-        const move = Move{ .from = intCast(u6, i), .to = intCast(u6, i + 8) };
-        try testing.expect(board.legalMoves[move.toInt()]);
+        const move = Move{ .from = @intCast(i), .to = @intCast(i + 8) };
+        try testing.expect(board.legal_moves[move.toInt()]);
     }
     var falsy_board = fromFen("rnbqkbnr/8/8/8/8/pppppppp/PPPPPPPP/RNBQKBNR");
     falsy_board.getLegalMoves(.Black);
     falsy_board.getLegalMoves(.White);
     // white
     for (48..56) |i| {
-        const move = Move{ .from = intCast(u6, i), .to = intCast(u6, i - 8) };
-        try testing.expect(!falsy_board.legalMoves[move.toInt()]);
+        const move = Move{ .from = @intCast(i), .to = @intCast(i - 8) };
+        try testing.expect(!falsy_board.legal_moves[move.toInt()]);
     }
     // black
     for (40..48) |i| {
-        const move = Move{ .from = intCast(u6, i), .to = intCast(u6, i + 8) };
-        try testing.expect(!falsy_board.legalMoves[move.toInt()]);
+        const move = Move{ .from = @intCast(i), .to = @intCast(i + 8) };
+        try testing.expect(!falsy_board.legal_moves[move.toInt()]);
     }
 }
 test "legal moves pawn tests double moves" {
@@ -694,72 +714,72 @@ test "legal moves pawn tests double moves" {
     board.getLegalMoves(.Black);
     // white double moves from starting position
     for (48..56) |i| {
-        const move = Move{ .from = intCast(u6, i), .to = intCast(u6, i - 16) };
-        try testing.expect(board.legalMoves[move.toInt()]);
+        const move = Move{ .from = @intCast(i), .to = @intCast(i - 16) };
+        try testing.expect(board.legal_moves[move.toInt()]);
     }
     // black double moves from starting position
     for (8..16) |i| {
-        const move = Move{ .from = intCast(u6, i), .to = intCast(u6, i + 16) };
-        try testing.expect(board.legalMoves[move.toInt()]);
+        const move = Move{ .from = @intCast(i), .to = @intCast(i + 16) };
+        try testing.expect(board.legal_moves[move.toInt()]);
     }
     board = fromFen("8/8/p7/P7/8/8/8/8");
     board.getLegalMoves(.White);
     board.getLegalMoves(.Black);
-    const no_white_double = Move{ .from = intCast(u6, 32), .to = intCast(u6, 16) };
-    try testing.expect(!board.legalMoves[no_white_double.toInt()]);
-    const no_black_double = Move{ .from = intCast(u6, 40), .to = intCast(u6, 56) };
-    try testing.expect(!board.legalMoves[no_black_double.toInt()]);
+    const no_white_double = Move{ .from = @intCast(32), .to = @intCast(16) };
+    try testing.expect(!board.legal_moves[no_white_double.toInt()]);
+    const no_black_double = Move{ .from = @intCast(40), .to = @intCast(56) };
+    try testing.expect(!board.legal_moves[no_black_double.toInt()]);
     board = fromFen("rnbqkbnr/pppppppp/8/8/P7/8/1PPPPPPP/RNBQKBNR");
     board.getLegalMoves(.White);
-    const blocked_white = Move{ .from = intCast(u6, 48), .to = intCast(u6, 32) };
-    try testing.expect(!board.legalMoves[blocked_white.toInt()]);
+    const blocked_white = Move{ .from = @intCast(48), .to = @intCast(32) };
+    try testing.expect(!board.legal_moves[blocked_white.toInt()]);
 
     board = fromFen("rnbqkbnr/1ppppppp/8/p7/8/8/PPPPPPPP/RNBQKBNR");
     board.getLegalMoves(.Black);
-    const blocked_black = Move{ .from = intCast(u6, 9), .to = intCast(u6, 25) };
-    try testing.expect(board.legalMoves[blocked_black.toInt()]);
+    const blocked_black = Move{ .from = @intCast(9), .to = @intCast(25) };
+    try testing.expect(board.legal_moves[blocked_black.toInt()]);
 }
 
 test "legal moves knight basic movements" {
     var board = fromFen("8/8/8/3N4/8/8/8/8");
     board.getLegalMoves(.White);
 
-    try testing.expect(board.legalMoves[(try Move.fromNotation("d5-e7", .White)).toInt()]);
-    try testing.expect(board.legalMoves[(try Move.fromNotation("d5-f6", .White)).toInt()]);
-    try testing.expect(board.legalMoves[(try Move.fromNotation("d5-f4", .White)).toInt()]);
-    try testing.expect(board.legalMoves[(try Move.fromNotation("d5-e3", .White)).toInt()]);
-    try testing.expect(board.legalMoves[(try Move.fromNotation("d5-c3", .White)).toInt()]);
-    try testing.expect(board.legalMoves[(try Move.fromNotation("d5-b4", .White)).toInt()]);
-    try testing.expect(board.legalMoves[(try Move.fromNotation("d5-b6", .White)).toInt()]);
-    try testing.expect(board.legalMoves[(try Move.fromNotation("d5-c7", .White)).toInt()]);
+    try testing.expect(board.legal_moves[(try Move.fromNotation("d5-e7", .White)).toInt()]);
+    try testing.expect(board.legal_moves[(try Move.fromNotation("d5-f6", .White)).toInt()]);
+    try testing.expect(board.legal_moves[(try Move.fromNotation("d5-f4", .White)).toInt()]);
+    try testing.expect(board.legal_moves[(try Move.fromNotation("d5-e3", .White)).toInt()]);
+    try testing.expect(board.legal_moves[(try Move.fromNotation("d5-c3", .White)).toInt()]);
+    try testing.expect(board.legal_moves[(try Move.fromNotation("d5-b4", .White)).toInt()]);
+    try testing.expect(board.legal_moves[(try Move.fromNotation("d5-b6", .White)).toInt()]);
+    try testing.expect(board.legal_moves[(try Move.fromNotation("d5-c7", .White)).toInt()]);
 }
 
 test "legal moves knight captures" {
     var board = fromFen("8/8/2p1p3/4N3/2p1p3/8/8/8");
     board.getLegalMoves(.White);
 
-    try testing.expect(board.legalMoves[(try Move.fromNotation("e5xc6", .White)).toInt()]);
-    try testing.expect(board.legalMoves[(try Move.fromNotation("e5xc4", .White)).toInt()]);
-    try testing.expect(!board.legalMoves[(try Move.fromNotation("e5xe6", .White)).toInt()]);
-    try testing.expect(!board.legalMoves[(try Move.fromNotation("e5xe4", .White)).toInt()]);
+    try testing.expect(board.legal_moves[(try Move.fromNotation("e5xc6", .White)).toInt()]);
+    try testing.expect(board.legal_moves[(try Move.fromNotation("e5xc4", .White)).toInt()]);
+    try testing.expect(!board.legal_moves[(try Move.fromNotation("e5xe6", .White)).toInt()]);
+    try testing.expect(!board.legal_moves[(try Move.fromNotation("e5xe4", .White)).toInt()]);
 }
 
 test "legal moves knight blocked" {
     var board = fromFen("8/8/2P1P3/4N3/2P1P3/8/8/8");
     board.getLegalMoves(.White);
 
-    try testing.expect(!board.legalMoves[(try Move.fromNotation("e5-c6", .White)).toInt()]);
-    try testing.expect(!board.legalMoves[(try Move.fromNotation("e5-c4", .White)).toInt()]);
-    try testing.expect(!board.legalMoves[(try Move.fromNotation("e5-e6", .White)).toInt()]);
-    try testing.expect(!board.legalMoves[(try Move.fromNotation("e5-e4", .White)).toInt()]);
+    try testing.expect(!board.legal_moves[(try Move.fromNotation("e5-c6", .White)).toInt()]);
+    try testing.expect(!board.legal_moves[(try Move.fromNotation("e5-c4", .White)).toInt()]);
+    try testing.expect(!board.legal_moves[(try Move.fromNotation("e5-e6", .White)).toInt()]);
+    try testing.expect(!board.legal_moves[(try Move.fromNotation("e5-e4", .White)).toInt()]);
 }
 
 test "legal moves knight edge moves" {
     var board = fromFen("8/8/8/8/8/8/8/N7");
     board.getLegalMoves(.White);
 
-    try testing.expect(board.legalMoves[(try Move.fromNotation("a1-b3", .White)).toInt()]);
-    try testing.expect(board.legalMoves[(try Move.fromNotation("a1-c2", .White)).toInt()]);
-    try testing.expect(!board.legalMoves[(try Move.fromNotation("a1-b4", .White)).toInt()]);
-    try testing.expect(!board.legalMoves[(try Move.fromNotation("a1-c3", .White)).toInt()]);
+    try testing.expect(board.legal_moves[(try Move.fromNotation("a1-b3", .White)).toInt()]);
+    try testing.expect(board.legal_moves[(try Move.fromNotation("a1-c2", .White)).toInt()]);
+    try testing.expect(!board.legal_moves[(try Move.fromNotation("a1-b4", .White)).toInt()]);
+    try testing.expect(!board.legal_moves[(try Move.fromNotation("a1-c3", .White)).toInt()]);
 }

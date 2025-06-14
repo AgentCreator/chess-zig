@@ -1,0 +1,9 @@
+<component name="libraryTable">
+  <library name="Zig SDK">
+    <CLASSES />
+    <JAVADOC />
+    <SOURCES>
+      <root url="file:///opt/homebrew/Cellar/zig/0.14.1/lib/zig/std" />
+    </SOURCES>
+  </library>
+</component>
