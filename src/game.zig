@@ -1,5 +1,10 @@
+//!
 //! the main game file.
-//! its a *Facade* on top of the board.
+//! its a *Facade* on top of the board, you can say.
+//!
+//! you can think of `board.zig` as the game engine,
+//! and `game.zig` as the actual game.
+//!
 
 pub const Board = @import("board");
 const std = @import("std");
@@ -121,7 +126,7 @@ pub fn isGameEnd(self: *Self) error{EndGameError}!void {
 //
 pub fn mainLoop(self: *Self, allocator: std.mem.Allocator) !void {
     const stderr = std.io.getStdErr().writer();
-    try stderr.print("Move #{d}\n", .{self.board.firstFreeMove()});
+    if (self.currentSide == .White) try stderr.print("\nMove #{d}\n", .{@divFloor(self.board.firstFreeMove(), 2) + 1});
     try self.prettyPrint();
     try self.listenAndPlayMove(allocator);
     try isGameEnd(self);
