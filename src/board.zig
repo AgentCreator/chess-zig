@@ -107,10 +107,15 @@ pub const Move = packed struct(u12) {
     to: u6,
 
     /// converts the long algebraic notation to a move.
-    /// TODO: accept a short version of the notation too, so `e2-e4` becomes `e2e4`
     pub fn fromNotation(notation: []const u8, color: Piece.Color) error{ NotAParsableMove, NoNeedleFound, WrongLength }!Move {
         var split_notation = std.mem.splitAny(u8, notation, " -xX");
-        const from, const to = .{ split_notation.first(), split_notation.rest() };
+        var from, var to = .{ split_notation.first(), split_notation.rest() };
+        if (to.len == 0 and notation.len > 2) {
+            // the move is of type "e2e4"
+            // instead of "e2-e4"
+            to = from[from.len-2..];
+            from = from[0..from.len-2];
+        }
         // yes you could do "O GAY"
         // or even "O  "
         // or even "OXXXO"
@@ -165,6 +170,23 @@ test "move from notation" {
     try testing.expectEqual(
         Move{ .from = try squereToInt("g1"), .to = try squereToInt("f3") },
         try Move.fromNotation("g1Xf3", .White),
+    );
+    // no space
+    try testing.expectEqual(
+        Move{ .from = try squereToInt("e2"), .to = try squereToInt("e4") },
+        try Move.fromNotation("e2e4", .White),
+    );
+    try testing.expectEqual(
+        Move{ .from = try squereToInt("d7"), .to = try squereToInt("d5") },
+        try Move.fromNotation("d7d5", .Black),
+    );
+    try testing.expectEqual(
+        Move{ .from = try squereToInt("f6"), .to = try squereToInt("e4") },
+        try Move.fromNotation("f6e4", .Black),
+    );
+    try testing.expectEqual(
+        Move{ .from = try squereToInt("g1"), .to = try squereToInt("f3") },
+        try Move.fromNotation("g1f3", .White),
     );
 
     // Castling moves
