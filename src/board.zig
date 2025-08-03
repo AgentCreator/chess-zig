@@ -20,10 +20,14 @@ pub const Piece = enum {
     Wbishop,
     Wknight,
     Wpawn,
+
     /// a chess piece color.
     pub const Color = enum(u1) {
         White,
         Black,
+        inline fn other(self: Color) Color {
+            return if (self == .Black) .White else .Black;
+        }
     };
     /// get a chess piece color from a piece.
     /// .empty = null.
@@ -138,7 +142,7 @@ pub const Move = packed struct(u12) {
             };
         }
         // goofy ahh solution
-        // its just to ignore the piece type, so you actually just do "Id4 d5"
+        // its just to ignore the piece type, so you can actually just do "Id4 d5"
         if (from.len == 3) return fromNotation(notation[1..], color);
 
         if (from.len != 2 or to.len != 2) {
@@ -512,12 +516,12 @@ pub fn getLegalMoves(self: *Self, side: Piece.Color) void {
                 const direction: i6 = if (side == .Black) 1 else -1;
                 // classic movement
                 var sq: i8 = intCast(i8, pos) + direction * 8;
-                if (self.checkColor(sq) catch unreachable == null) {
+                if (self.checkColor(sq) catch continue == null) {
                     const new_move1 = Move{ .from = pos, .to = @intCast(sq) };
                     self.addLegalMove(new_move1);
                     sq += direction * 8;
                     // double movement
-                    if (self.checkColor(sq) catch unreachable == null and switch (side) {
+                    if (self.checkColor(sq) catch continue == null and switch (side) {
                         .White => pos >= 48 and pos < 56,
                         .Black => pos >= 8 and pos < 16,
                     }) {
@@ -527,7 +531,7 @@ pub fn getLegalMoves(self: *Self, side: Piece.Color) void {
                 }
 
                 // capture
-                const opposite_side: Piece.Color = if (side == .White) .Black else .White;
+                const opposite_side: Piece.Color = side.other();
                 if (pos % 8 != 0 and self.checkColor(intCast(i7, pos) + direction * 8 - 1) catch unreachable == opposite_side) {
                     const move = Move{ .from = pos, .to = @intCast(intCast(i7, pos) + direction * 8 - 1) };
                     self.addLegalMove(move);
@@ -562,7 +566,7 @@ pub fn getLegalMoves(self: *Self, side: Piece.Color) void {
                     .{ 1, -1 },
                     .{ -1, 1 },
                 }) |value| {
-                    const new_pos = (y + value[1]) * 8 + (x + value[0]);
+                    const new_pos: i8 = (y + value[1]) * 8 + (x + value[0]);
                     if (isOnBoard(x + value[0], y + value[1]) and self.checkColor(new_pos) catch unreachable != side) {
                         self.addLegalMove(Move{ .from = pos, .to = @intCast(new_pos) });
                     }
@@ -570,7 +574,7 @@ pub fn getLegalMoves(self: *Self, side: Piece.Color) void {
                 // castles.
                 const start_pos = if (side == .White) comptime squereToInt("e1") catch unreachable else comptime squereToInt("e8") catch unreachable;
                 const rook_color: Piece = if (side == .White) .Wrook else .Brook;
-                if (pos != start_pos and self.hasPieceMoved(pos)) continue;
+                if (pos != start_pos or self.hasPieceMoved(pos)) continue;
                 if (
                 // and are the squeres to O-O free??
                 self.checkColor(pos + 1) catch unreachable == null and self.checkColor(pos + 2) catch unreachable == null
@@ -581,7 +585,7 @@ pub fn getLegalMoves(self: *Self, side: Piece.Color) void {
                 }
 
                 if (
-                // and are the squeres to O-O free??
+                // and are the squeres to O-O-O free??
                 self.checkColor(pos - 1) catch unreachable == null and self.checkColor(pos - 2) catch unreachable == null
                     // and did the rook move??
                 and self.board[pos - 4] == rook_color and !self.hasPieceMoved(pos - 4)) {
@@ -804,4 +808,81 @@ test "legal moves knight edge moves" {
     try testing.expect(board.legal_moves[(try Move.fromNotation("a1-c2", .White)).toInt()]);
     try testing.expect(!board.legal_moves[(try Move.fromNotation("a1-b4", .White)).toInt()]);
     try testing.expect(!board.legal_moves[(try Move.fromNotation("a1-c3", .White)).toInt()]);
+}
+
+fn isAttacked(self: Self, pos: u6) bool {
+    const color: Piece.Color = (self.checkColor(pos) catch unreachable ).?;
+    for (self.legal_moves, 0..) |isLegal, id| {
+        if (!isLegal) continue;
+        const move: Move = @bitCast(intCast(u12, id));
+        if (move.to != pos) continue;
+        if (self.checkColor(move.from) catch unreachable == color) continue;
+        return true;
+    }
+    return false;
+}
+
+test "isAttacked fool's mate" {
+    var board = fromFen("rnb1kbnr/pppp1ppp/8/4p3/6Pq/5P2/PPPPP2P/RNBQKBNR");
+    board.getLegalMoves(.Black);
+    try testing.expect(board.isAttacked(try squereToInt("e1")));
+}
+
+test "isAttacked normal mate" {
+    var board = fromFen("r1bqkb1r/pppp1Qpp/2n2n2/4p3/2B1P3/8/PPPP1PPP/RNB1K1NR");
+    board.getLegalMoves(.White);
+    try testing.expect(board.isAttacked(try squereToInt("e8")));
+}
+
+test "isAttacked false positive" {
+    var board = fromFen("rnbqkbnr/pppp1ppp/8/4p3/4P3/8/PPPP1PPP/RNBQKBNR");
+    board.getLegalMoves(.White);
+    try testing.expect(!board.isAttacked(try squereToInt("e8")));
+}
+
+fn canMove(self: Self, from: u6) bool {
+
+    for (self.legal_moves, 0..) |isLegal, id| {
+        if (!isLegal) continue;
+        const move: Move = @bitCast(intCast(u12, id));
+        if (move.from != from) continue;
+        return true;
+    }
+    return false;
+}
+
+test "canMove basic tests" {
+    var board = fromFen("8/8/8/3P4/8/8/8/8");
+    board.getLegalMoves(.White);
+    try testing.expect(board.canMove(try squereToInt("d5")));
+
+    board = fromFen("8/8/8/8/8/8/P7/8");
+    board.getLegalMoves(.White);
+    try testing.expect(board.canMove(try squereToInt("a2")));
+}
+
+test "canMove blocked piece tests" {
+    var board = fromFen("8/8/3p4/3P4/8/8/8/8");
+    board.getLegalMoves(.White);
+    try testing.expect(!board.canMove(try squereToInt("d5")));
+
+    board = fromFen("8/8/8/3p4/3P4/8/8/8");
+    board.getLegalMoves(.White);
+    try testing.expect(!board.canMove(try squereToInt("d4")));
+}
+
+test "canMove edge cases" {
+    var board = fromFen("8/8/8/8/8/8/8/8");
+    board.getLegalMoves(.White);
+    try testing.expect(!board.canMove(try squereToInt("a1")));
+
+    board = fromFen("k7/8/8/8/8/8/8/K7");
+    board.getLegalMoves(.White);
+    try testing.expect(board.canMove(try squereToInt("a1")));
+    board.getLegalMoves(.Black);
+    try testing.expect(board.canMove(try squereToInt("a8")));
+}
+
+pub fn isCheckmated(self: Self, kingPos: u6) bool {
+    return !self.canMove(kingPos) and self.isAttacked(kingPos);
 }

@@ -40,7 +40,7 @@ pub fn playMove(self: *Self, move: Board.Move) error{ImpossibleMove}!void {
     const piece = self.board.board[move.from];
     self.board.forceMakeMove(move);
     if (piece != .Wking and piece != .Bking and piece != .Wpawn and piece != .Bpawn) return;
-    const diff = intCast(i8, move.to) - intCast(i8, move.from);
+    const diff = @as(i8, move.to) - @as(i8, move.from);
     if ((piece == .Wking or piece == .Bking) and @abs(diff) == 2) {
         // castles!!
         const rook_pos = if (diff == 2) move.to + 1 else move.to - 2;
@@ -108,9 +108,11 @@ pub fn listenForValidMove(self: Self, allocator: std.mem.Allocator) !Board.Move 
     };
 }
 
+
 pub fn listenAndPlayMove(self: *Self, allocator: std.mem.Allocator) !void {
     const stderr = std.io.getStdErr().writer();
     const move = try self.listenForValidMove(allocator);
+    // std.debug.print("move: {d} ({b:0>12})\n", .{move.toInt(), move.toInt()});
     self.playMove(move) catch {
         try stderr.print("hey, so this move you played is actually impossible... yeah try again\n", .{});
         self.currentSide = if (self.currentSide == Board.Piece.Color.White) Board.Piece.Color.Black else Board.Piece.Color.White;
@@ -118,17 +120,18 @@ pub fn listenAndPlayMove(self: *Self, allocator: std.mem.Allocator) !void {
     };
 }
 
-pub fn isGameEnd(self: *Self) error{EndGameError}!void {
-    _ = (Board.indexOf(Board.Piece, &self.board.board, .Wking) catch return error.EndGameError);
-    _ = (Board.indexOf(Board.Piece, &self.board.board, .Bking) catch return error.EndGameError);
+pub fn isGameEnd(self: Self) error{WhiteWon, BlackWon}!void {
+    const wking = (Board.indexOf(Board.Piece, &self.board.board, .Wking) catch return error.BlackWon);
+    const bking = (Board.indexOf(Board.Piece, &self.board.board, .Bking) catch return error.WhiteWon);
+    if (self.board.isCheckmated(intCast(u6, wking))) return error.BlackWon;
+    if (self.board.isCheckmated(intCast(u6, bking))) return error.WhiteWon;
 }
 
-//
 pub fn mainLoop(self: *Self, allocator: std.mem.Allocator) !void {
     const stderr = std.io.getStdErr().writer();
     if (self.currentSide == .White) try stderr.print("\nMove #{d}\n", .{@divFloor(self.board.firstFreeMove(), 2) + 1});
     try self.prettyPrint();
     try self.listenAndPlayMove(allocator);
-    try isGameEnd(self);
+    try isGameEnd(self.*);
     try self.mainLoop(allocator);
 }

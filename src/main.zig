@@ -10,13 +10,13 @@ pub fn main() !void {
     const stderr = std.io.getStdErr().writer();
     const allocator = debug_allocator.allocator();
     var game = Game.init(.Classic);
-    game.mainLoop(allocator) catch |err| switch (err) {
-        error.EndGameError => {
-            try stderr.print("\n\nCheckmate! {s} won!\nGGs :)\n", .{if (game.currentSide == .Black) "White" else "Black"});
-        },
-        else => {
-            try stderr.print("game ended with an unknown reason: {!}\n", .{err});
-        },
+    _ = game.mainLoop(allocator) catch |err| switch (err) {
+        error.BlackWon =>
+        try stderr.write("\n\nCheckmate! Black won!\nGGs :)\n"),
+        error.WhiteWon =>
+        try stderr.write("\n\nCheckmate! White won!\nGGs :)\n"),
+        else =>
+        try stderr.print("game ended with an unknown reason: {!}\n", .{err}),
     };
     // std.debug.print("{any}\n", .{move});
     defer _ = debug_allocator.deinit();
