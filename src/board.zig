@@ -41,7 +41,7 @@ pub const Piece = enum {
 };
 
 /// converting numbers.
-/// trust me, its REALLY useful.
+/// trust me, its useful.
 inline fn intCast(comptime T: type, int: anytype) T {
     return @as(T, @intCast(int));
 }
